@@ -70,14 +70,13 @@ def _run_all():
     STATE['data'] = data
     STATE['diagnostic'] = run_diagnostic(data)
     STATE['maturity'] = run_maturity(data, STATE['diagnostic'])
-    STATE['readiness'] = compute_readiness(data, STATE['diagnostic'])
+    STATE['readiness'] = compute_readiness(data, STATE['diagnostic'], STATE['maturity'])
     STATE['initiatives'] = score_initiatives(data, STATE['diagnostic'], STATE['readiness'])
     _apply_all_overrides()
     STATE['waterfall'] = run_waterfall(data, STATE['initiatives'])
     STATE['risk'] = run_risk(STATE['initiatives'], data)
     STATE['workforce'] = run_workforce(data, STATE['waterfall'], STATE['initiatives'])
-    STATE['channelStrategy'] = run_channel_strategy(data, STATE['diagnostic'])
-    # v12-#35: Store sub-intent analysis for downstream consumption
+    STATE['channelStrategy'] = run_channel_strategy(data, STATE['diagnostic'], STATE['initiatives'])
     STATE['subIntentAnalysis'] = STATE['diagnostic'].get('subIntentAnalysis', [])
     STATE['loaded'] = True
     return True
@@ -94,14 +93,15 @@ def _recompute_all_from_diagnostic():
     data = STATE['data']
     STATE['diagnostic'] = run_diagnostic(data)
     STATE['maturity'] = run_maturity(data, STATE['diagnostic'])
-    STATE['readiness'] = compute_readiness(data, STATE['diagnostic'])
+    STATE['readiness'] = compute_readiness(data, STATE['diagnostic'], STATE['maturity'])
     STATE['initiatives'] = score_initiatives(data, STATE['diagnostic'], STATE['readiness'])
     _apply_all_overrides()
     _recompute_downstream()
-    STATE['channelStrategy'] = run_channel_strategy(data, STATE['diagnostic'])
+    STATE['channelStrategy'] = run_channel_strategy(data, STATE['diagnostic'], STATE['initiatives'])
 
 
 def _apply_all_overrides():
+    # Initiative overrides
     for init in STATE['initiatives']:
         iid = init['id']
         ok = f"init_enabled_{iid}"
@@ -113,6 +113,16 @@ def _apply_all_overrides():
         if field_key in STATE['overrides']:
             for fk, fv in STATE['overrides'][field_key].items():
                 init[fk] = fv
+    # v12-#53: Benchmark overrides — re-apply saved benchmark values after recalculation
+    for key, val in STATE['overrides'].items():
+        if key.startswith('benchmark_'):
+            metric = key.replace('benchmark_', '')
+            bm = STATE['data'].get('benchmarks', {})
+            if metric in bm:
+                if isinstance(bm[metric], dict):
+                    bm[metric]['global'] = val
+                else:
+                    bm[metric] = val
 
 
 def _build_demo_object(overrides=None):
@@ -239,7 +249,7 @@ def _build_demo_object(overrides=None):
 
 @app.route('/api/health')
 def api_health():
-    return jsonify({'status': 'ok', 'version': 'v12', 'service': 'ContactNavigator'})
+    return jsonify({'status': 'ok', 'version': 'v14', 'service': 'ContactNavigator'})
 
 
 @app.route('/login')
@@ -362,7 +372,7 @@ def api_recommendations(page_context):
     """Get contextual recommendations for a specific page."""
     if not STATE['loaded']: return jsonify({'error': 'Not loaded'}), 503
     recs = get_recommendations(page_context, STATE['data'], STATE['diagnostic'],
-                                STATE['initiatives'], STATE['waterfall'])
+                                STATE['initiatives'], STATE['waterfall'], maturity=STATE.get('maturity'))
     return jsonify(recs)
 
 @app.route('/api/initiative-linkage/<page_context>')
@@ -424,11 +434,46 @@ def index():
 def api_data():
     if not STATE['loaded']:
         return jsonify({'error': 'Data not loaded', 'reason': STATE.get('_load_error', 'Unknown')}), 503
+    bu = request.args.get('bu')
+    if bu and bu != 'all':
+        import copy
+        demo = copy.deepcopy(_build_demo_object())
+        if 'queues' in demo:
+            demo['queues'] = [q for q in demo['queues'] if q.get('bu') == bu]
+        # Recompute totals from filtered queues
+        filtered_q = demo.get('queues', [])
+        if filtered_q:
+            demo['totalVolumeAnnual'] = sum(q.get('volume', 0) for q in filtered_q)
+            demo['totalVolume'] = demo['totalVolumeAnnual']
+        return jsonify(demo)
     return jsonify(_build_demo_object())
 
 @app.route('/api/diagnostic')
 def api_diagnostic():
     if not STATE['loaded']: return jsonify({'error':'Not loaded'}), 503
+    bu = request.args.get('bu')
+    if bu and bu != 'all':
+        import copy
+        diag = copy.deepcopy(STATE['diagnostic'])
+        # Filter queue-level data by BU
+        if 'queueScores' in diag:
+            diag['queueScores'] = [q for q in diag['queueScores'] if q.get('bu') == bu]
+        if 'subIntentAnalysis' in diag:
+            diag['subIntentAnalysis'] = [s for s in diag['subIntentAnalysis']
+                                          if any(q.get('bu') == bu for q in STATE['diagnostic'].get('queueScores', [])
+                                                 if q.get('intent') == s.get('intent'))]
+        # Recompute summary from filtered queues
+        qs = diag.get('queueScores', [])
+        if qs:
+            scores = [q.get('overallScore', 0) for q in qs]
+            diag['summary'] = {
+                'total': len(qs),
+                'avgScore': round(sum(scores) / len(scores), 1) if scores else 0,
+                'red': sum(1 for q in qs if q.get('rating') == 'red'),
+                'amber': sum(1 for q in qs if q.get('rating') == 'amber'),
+                'green': sum(1 for q in qs if q.get('rating') == 'green'),
+            }
+        return jsonify(diag)
     return jsonify(STATE['diagnostic'])
 
 @app.route('/api/maturity')
@@ -451,6 +496,16 @@ def api_initiatives():
 @app.route('/api/waterfall')
 def api_waterfall():
     if not STATE['loaded']: return jsonify({'error':'Not loaded'}), 503
+    bu = request.args.get('bu')
+    if bu and bu != 'all':
+        import copy
+        wf = copy.deepcopy(STATE['waterfall'])
+        # Scope to BU summary if available
+        bu_data = wf.get('buSummary', {}).get(bu, {})
+        if bu_data:
+            wf['_buScoped'] = bu
+            wf['_buData'] = bu_data
+        return jsonify(wf)
     return jsonify(STATE['waterfall'])
 
 @app.route('/api/risk')
@@ -461,6 +516,16 @@ def api_risk():
 @app.route('/api/workforce')
 def api_workforce():
     if not STATE['loaded']: return jsonify({'error':'Not loaded'}), 503
+    bu = request.args.get('bu')
+    if bu and bu != 'all':
+        import copy
+        wk = copy.deepcopy(STATE['workforce'])
+        # Filter byBU to scoped BU
+        if 'byBU' in wk and isinstance(wk['byBU'], dict):
+            scoped = {k: v for k, v in wk['byBU'].items() if k == bu}
+            wk['byBU'] = scoped
+            wk['_buScoped'] = bu
+        return jsonify(wk)
     return jsonify(STATE['workforce'])
 
 @app.route('/api/refresh', methods=['POST'])
@@ -565,6 +630,32 @@ def api_maturity_override():
         mat['overallLevel'] = min(5, max(1, round(overall)))
         mat['levelInfo'] = MATURITY_LEVELS.get(mat['overallLevel'], {})
     return jsonify({'status':'ok','maturity': mat})
+
+@app.route('/api/benchmarks/override', methods=['POST'])
+@require_role('supervisor')
+def api_benchmark_override():
+    """Save benchmark overrides persistently across sessions."""
+    body = request.get_json(force=True)
+    overrides = body.get('benchmarks', {})
+    if not overrides: return jsonify({'error': 'benchmarks object required'}), 400
+    # Store each benchmark override
+    for metric, value in overrides.items():
+        STATE['overrides'][f"benchmark_{metric}"] = value
+        # Apply to live benchmarks
+        if metric in STATE['data'].get('benchmarks', {}):
+            if isinstance(STATE['data']['benchmarks'][metric], dict):
+                STATE['data']['benchmarks'][metric]['global'] = value
+            else:
+                STATE['data']['benchmarks'][metric] = value
+    _recompute_all_from_diagnostic()
+    return jsonify({'status': 'ok', 'message': f'{len(overrides)} benchmark(s) saved',
+                    'data': _build_demo_object(), 'waterfall': STATE['waterfall']})
+
+@app.route('/api/benchmarks/overrides', methods=['GET'])
+def api_benchmark_overrides_get():
+    """Retrieve saved benchmark overrides."""
+    bm_overrides = {k.replace('benchmark_', ''): v for k, v in STATE['overrides'].items() if k.startswith('benchmark_')}
+    return jsonify({'benchmarks': bm_overrides})
 
 @app.route('/api/investment')
 def api_investment():
@@ -920,6 +1011,125 @@ def api_export_pdf():
         
         # Footer
         pdf.ln(10)
+
+        # ── Risk Assessment ──
+        pdf.add_page()
+        pdf.set_font('Helvetica', 'B', 18)
+        pdf.set_text_color(46, 46, 56)
+        pdf.cell(0, 12, 'Risk Assessment', ln=True)
+        pdf.set_draw_color(255, 230, 0)
+        pdf.set_line_width(1)
+        pdf.line(10, pdf.get_y(), 80, pdf.get_y())
+        pdf.ln(8)
+        risk_data = STATE.get('risk', {})
+        overall_risk = risk_data.get('overallScore', 0)
+        risk_level = 'Low' if overall_risk < 2 else ('Medium' if overall_risk < 3.5 else 'High')
+        pdf.set_font('Helvetica', 'B', 12)
+        pdf.cell(0, 8, f'Overall Risk Score: {overall_risk:.1f}/5 ({risk_level})', ln=True)
+        pdf.ln(4)
+        risk_dims = risk_data.get('dimensions', {})
+        if risk_dims:
+            pdf.set_font('Helvetica', 'B', 9)
+            rh = ['Dimension', 'Score', 'Level', 'Mitigation']
+            rw = [45, 25, 25, 95]
+            pdf.set_fill_color(46, 46, 56)
+            pdf.set_text_color(255, 255, 255)
+            for i, h in enumerate(rh):
+                pdf.cell(rw[i], 8, h, border=1, fill=True, align='C')
+            pdf.ln()
+            pdf.set_text_color(46, 46, 56)
+            pdf.set_font('Helvetica', '', 8)
+            for dim_name, dim_data in risk_dims.items():
+                if isinstance(dim_data, dict):
+                    s = dim_data.get('score', 0)
+                    lvl = 'Low' if s < 2 else ('Medium' if s < 3.5 else 'High')
+                    mit = dim_data.get('mitigation', dim_data.get('recommendation', ''))[:60]
+                    pdf.cell(rw[0], 7, str(dim_name).replace('_', ' ').title(), border=1)
+                    pdf.cell(rw[1], 7, f'{s:.1f}', border=1, align='C')
+                    pdf.cell(rw[2], 7, lvl, border=1, align='C')
+                    pdf.cell(rw[3], 7, mit, border=1)
+                    pdf.ln()
+
+        # ── Maturity Assessment ──
+        pdf.ln(10)
+        pdf.set_font('Helvetica', 'B', 18)
+        pdf.cell(0, 12, 'Maturity Assessment', ln=True)
+        pdf.set_draw_color(255, 230, 0)
+        pdf.line(10, pdf.get_y(), 80, pdf.get_y())
+        pdf.ln(8)
+        mat = STATE.get('maturity', {})
+        mat_overall = mat.get('overall', 0)
+        mat_level = mat.get('overallLevel', 0)
+        level_info = mat.get('levelInfo', {})
+        pdf.set_font('Helvetica', 'B', 12)
+        pdf.cell(0, 8, f'Overall Maturity: {mat_overall:.1f}/5 (Level {mat_level}: {level_info.get("name", "")})', ln=True)
+        pdf.ln(4)
+        mat_dims = mat.get('dimensions', {})
+        if mat_dims:
+            pdf.set_font('Helvetica', 'B', 9)
+            mh = ['Dimension', 'Score', 'Level', 'Weight']
+            mw = [55, 25, 25, 25]
+            pdf.set_fill_color(46, 46, 56)
+            pdf.set_text_color(255, 255, 255)
+            for i, h in enumerate(mh):
+                pdf.cell(mw[i], 8, h, border=1, fill=True, align='C')
+            pdf.ln()
+            pdf.set_text_color(46, 46, 56)
+            pdf.set_font('Helvetica', '', 9)
+            for dim, dd in mat_dims.items():
+                if isinstance(dd, dict):
+                    pdf.cell(mw[0], 7, str(dim).replace('_', ' ').title(), border=1)
+                    pdf.cell(mw[1], 7, f'{dd.get("score", 0):.1f}', border=1, align='C')
+                    pdf.cell(mw[2], 7, str(dd.get('level', '')), border=1, align='C')
+                    pdf.cell(mw[3], 7, f'{dd.get("weight", 0.2):.0%}', border=1, align='C')
+                    pdf.ln()
+
+        # ── Channel Mix Summary ──
+        pdf.add_page()
+        pdf.set_font('Helvetica', 'B', 18)
+        pdf.cell(0, 12, 'Channel Strategy', ln=True)
+        pdf.set_draw_color(255, 230, 0)
+        pdf.line(10, pdf.get_y(), 80, pdf.get_y())
+        pdf.ln(8)
+        cs = STATE.get('channel_strategy', {})
+        channel_mix = cs.get('channelMix', [])
+        if channel_mix:
+            pdf.set_font('Helvetica', 'B', 9)
+            ch_headers = ['Channel', 'Volume', 'Share %', 'Avg CSAT', 'Avg AHT', 'Avg CPC']
+            ch_widths = [35, 30, 25, 25, 30, 30]
+            pdf.set_fill_color(46, 46, 56)
+            pdf.set_text_color(255, 255, 255)
+            for i, h in enumerate(ch_headers):
+                pdf.cell(ch_widths[i], 8, h, border=1, fill=True, align='C')
+            pdf.ln()
+            pdf.set_text_color(46, 46, 56)
+            pdf.set_font('Helvetica', '', 9)
+            for ch in channel_mix:
+                pdf.cell(ch_widths[0], 7, ch.get('channel', ''), border=1)
+                pdf.cell(ch_widths[1], 7, f"{ch.get('volume', 0):,}", border=1, align='C')
+                pdf.cell(ch_widths[2], 7, f"{ch.get('pct', 0):.1f}%", border=1, align='C')
+                pdf.cell(ch_widths[3], 7, f"{ch.get('avgCSAT', 0):.2f}", border=1, align='C')
+                pdf.cell(ch_widths[4], 7, f"{ch.get('avgAHT_min', ch.get('avgAHT', 0)):.0f}s", border=1, align='C')
+                pdf.cell(ch_widths[5], 7, f"${ch.get('avgCPC', 0):.2f}", border=1, align='C')
+                pdf.ln()
+
+        # ── Diagnostic Highlights ──
+        pdf.ln(10)
+        pdf.set_font('Helvetica', 'B', 14)
+        pdf.cell(0, 10, 'Diagnostic Highlights', ln=True)
+        pdf.set_font('Helvetica', '', 9)
+        diag_text_items = [
+            f"Total monthly volume: {data['params'].get('totalVolume', 0):,} contacts across {len(data.get('queues', []))} queues",
+            f"Total FTE: {data['params'].get('totalFTE', 0):,}",
+            f"Business units: {', '.join(data.get('bus', []))}",
+            f"Active channels: {', '.join(data.get('channels', []))}",
+            f"Enabled initiatives: {sum(1 for i in STATE['initiatives'] if i.get('enabled'))} of {len(STATE['initiatives'])}",
+        ]
+        for item in diag_text_items:
+            pdf.cell(0, 6, item, ln=True)
+
+        # ── Disclaimer ──
+        pdf.ln(6)
         pdf.set_font('Helvetica', 'I', 8)
         pdf.set_text_color(128, 128, 128)
         pdf.cell(0, 6, 'This report was generated by EY ServiceEdge | Contact Navigator. Cap methodology: McKinsey 2025, Gartner 2025.', ln=True, align='C')

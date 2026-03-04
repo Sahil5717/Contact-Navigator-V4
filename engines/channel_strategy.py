@@ -429,7 +429,7 @@ def compute_migration_savings(migrations, channels_data, cost_analysis):
     }
 
 
-def run_channel_strategy(data, diagnostic):
+def run_channel_strategy(data, diagnostic, initiatives=None):
     queues = data['queues']; params = data['params']
     channels_data = {}
     for q in queues:
@@ -454,6 +454,19 @@ def run_channel_strategy(data, diagnostic):
                     if CHANNEL_HIERARCHY.get(ch, {}).get('digitalScore', 0) >= 0.6 and cd.get('avgCpc', 0) > 0]
     best_digital_cpc = min(digital_cpcs) if digital_cpcs else base_cpc
 
+    # v12-#49: Compute initiative-driven deflection rates per channel
+    init_deflection_by_channel = {}
+    if initiatives:
+        enabled = [i for i in initiatives if i.get('enabled')]
+        deflection_levers = {'deflection', 'self_service', 'channel_shift', 'automation'}
+        for init in enabled:
+            if init.get('lever', '') in deflection_levers:
+                impact = init.get('impact', 0) * init.get('adoption', 0.8)
+                target_channels = init.get('channels', [])
+                for ch in target_channels:
+                    if ch in channels_data:
+                        init_deflection_by_channel[ch] = init_deflection_by_channel.get(ch, 0) + impact
+
     recommendations = []; decisions = {}; cx_safeguards = {}; readiness_scores = {}
     for ch_name, ch_data in channels_data.items():
         hier = CHANNEL_HIERARCHY.get(ch_name, {'costTier': 5, 'digitalScore': 0.5, 'automationPotential': 0.40})
@@ -462,6 +475,20 @@ def run_channel_strategy(data, diagnostic):
         readiness_scores[ch_name] = readiness
         decision, rationale, migrate_pct, cx_metrics = decide_channel_strategy(
             ch_name, ch_data, readiness, channels_data, total_vol)
+
+        # v12-#49: Override with initiative-driven deflection if available
+        init_defl = init_deflection_by_channel.get(ch_name, 0)
+        if init_defl > 0 and hier.get('costTier', 5) >= 5:
+            # Initiative says to deflect from this channel — override health-only decision
+            new_migrate_pct = min(0.45, init_defl)
+            if new_migrate_pct > migrate_pct:
+                migrate_pct = new_migrate_pct
+                if decision == 'maintain':
+                    decision = 'migrate_from'
+                    rationale = f'Initiative-driven: {init_defl:.0%} deflection potential from enabled initiatives. ' + rationale
+                elif decision in ('optimise', 'protect'):
+                    rationale = f'Initiative overlay: {init_defl:.0%} additional deflection. ' + rationale
+
         decisions[ch_name] = {'decision': decision, 'rationale': rationale, 'migratePct': migrate_pct}
         if cx_metrics['cxRisk']:
             cx_safeguards[ch_name] = {

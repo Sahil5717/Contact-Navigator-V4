@@ -37,6 +37,7 @@ PAGE_SIGNALS = {
     'self_service': ['low_self_service', 'automation', 'channel_mismatch'],
     'channel_strategy': ['channel_mismatch', 'low_self_service', 'cost_outlier'],
     'impact_dashboard': ['high_cost', 'low_csat', 'low_fcr', 'high_aht'],
+    'opportunity_sizing': ['low_self_service', 'high_cost', 'channel_mismatch', 'high_aht'],
 }
 
 # ═══════════════════════════════════════════════════════════════
@@ -122,6 +123,51 @@ def _score_for_executive_summary(init, data, diagnostic):
     score += init.get('matchScore', 0) / 30
     return score
 
+def _score_for_maturity(init, data, diagnostic):
+    """v14: Maturity page — favour initiatives that close maturity gaps."""
+    score = 0; lever = init.get('lever', ''); layer = init.get('layer', '')
+    # Process improvement & knowledge management close maturity gaps
+    if lever in ('process_improvement', 'knowledge_mgmt', 'automation'): score += 4
+    if lever in ('quality', 'training', 'agent_assist'): score += 3
+    # AI & Automation initiatives raise tech maturity
+    if layer == 'AI & Automation': score += 2
+    # Operating Model initiatives raise process maturity
+    if layer == 'Operating Model': score += 2
+    # Higher-impact initiatives rank better on maturity page
+    score += min(2, init.get('_fteImpact', 0) / max(data.get('totalFTE', 1), 1) * 40)
+    score += min(2, init.get('_annualSaving', 0) / max(data.get('totalCost', 1), 1) * 80)
+    return score
+
+def _score_for_channel_strategy(init, data, diagnostic):
+    """v14: Channel strategy page — favour deflection, channel shift, digital enablement."""
+    score = 0; lever = init.get('lever', '')
+    if lever == 'deflection': score += 5
+    if lever in ('channel_shift', 'self_service'): score += 4
+    if lever == 'automation': score += 3
+    # Bonus for initiatives targeting digital channels
+    digital_chs = {'Chat', 'App/Self-Service', 'SMS/WhatsApp', 'IVR', 'Email'}
+    init_chs = set(init.get('channels', []))
+    if init_chs & digital_chs: score += 2
+    # Channel migrations directly improve this page
+    score += min(2, init.get('_annualSaving', 0) / max(data.get('totalCost', 1), 1) * 60)
+    return score
+
+def _score_for_impact_dashboard(init, data, diagnostic):
+    """v14: Impact dashboard — overall business impact, balanced across levers."""
+    score = 0
+    # Broad layer balance bonus
+    score += {'AI & Automation': 1, 'Operating Model': 1, 'Location Strategy': 1}.get(init.get('layer', ''), 0)
+    # Weight heavily by FTE and saving (this is the impact page)
+    score += min(4, init.get('_fteImpact', 0) / max(data.get('totalFTE', 1), 1) * 60)
+    score += min(4, init.get('_annualSaving', 0) / max(data.get('totalCost', 1), 1) * 100)
+    # CSAT contributors get a boost
+    if init.get('csatImpact', 0) > 0: score += 1
+    return score
+
+def _score_for_opportunity_sizing(init, data, diagnostic):
+    """v14: Opportunity sizing — same logic as opportunity_buckets."""
+    return _score_for_opportunity_buckets(init, data, diagnostic)
+
 PAGE_SCORERS = {
     'executive_summary': _score_for_executive_summary,
     'benchmarking': _score_for_benchmarking,
@@ -130,12 +176,17 @@ PAGE_SCORERS = {
     'cost_analysis': _score_for_cost_analysis,
     'self_service': _score_for_self_service,
     'opportunity_buckets': _score_for_opportunity_buckets,
+    # v14: Add scorers for pages that previously had None (all fell through to generic)
+    'maturity': _score_for_maturity,
+    'channel_strategy': _score_for_channel_strategy,
+    'impact_dashboard': _score_for_impact_dashboard,
+    'opportunity_sizing': _score_for_opportunity_sizing,
 }
 
 
-def get_recommendations(page_context, data, diagnostic, initiatives, waterfall=None, max_recs=5):
-    """v12-#12: Context-aware recommendations. v12-#23: Only surfaces enabled (roadmap-aligned) initiatives."""
-    signals = _detect_signals(page_context, data, diagnostic, waterfall)
+def get_recommendations(page_context, data, diagnostic, initiatives, waterfall=None, max_recs=5, maturity=None):
+    """v12-#12: Context-aware recommendations. v12-#23: Only surfaces enabled (roadmap-aligned) initiatives. v12-#43: Maturity-aware."""
+    signals = _detect_signals(page_context, data, diagnostic, waterfall, maturity)
     enabled = [i for i in initiatives if i.get('enabled')]
     scorer = PAGE_SCORERS.get(page_context)
     scored = []
@@ -154,11 +205,32 @@ def get_recommendations(page_context, data, diagnostic, initiatives, waterfall=N
     top = scored[:max_recs]
     recommendations = []
     for rel, init in top:
+        saving = init.get('_annualSaving', 0)
+        # v12-#44: Build trigger_details from matched signals (intent × channel × metric)
+        lever = init.get('lever', '')
+        trigger_details = []
+        for sig in signals:
+            if lever in SIGNAL_TO_LEVER.get(sig['type'], []):
+                desc = sig.get('description', '')
+                short = desc.split('(')[0].strip().split('—')[0].strip()
+                if short and short not in trigger_details:
+                    trigger_details.append(short)
+        if not trigger_details:
+            trigger_details = [init.get('layer', 'Transformation')]
+        # v12-#44: Format savings_display
+        if abs(saving) >= 1_000_000:
+            savings_display = f"${saving/1_000_000:,.1f}M/yr"
+        elif abs(saving) >= 1_000:
+            savings_display = f"${saving/1_000:,.0f}K/yr"
+        else:
+            savings_display = f"${saving:,.0f}/yr"
         recommendations.append({
             'id': init['id'], 'name': init['name'], 'layer': init.get('layer', ''),
             'lever': init.get('lever', ''), 'rationale': _build_rationale(init, signals),
             'fte_impact': round(init.get('_fteImpact', 0), 1),
-            'annual_saving': round(init.get('_annualSaving', 0)),
+            'annual_saving': round(saving),
+            'trigger_details': trigger_details[:3],   # v12-#44
+            'savings_display': savings_display,        # v12-#44
             'priority': 'high' if rel > 4 else 'medium' if rel > 2 else 'low',
             'relevance_score': round(rel, 2),
         })
@@ -239,7 +311,7 @@ def get_initiative_linkage(page_context, data, diagnostic, initiatives, waterfal
     return {'page_context': page_context, 'linkages': linkages, 'total_findings': len(linkages)}
 
 
-def _detect_signals(page_context, data, diagnostic, waterfall):
+def _detect_signals(page_context, data, diagnostic, waterfall, maturity=None):
     signals = []; queues = data.get('queues', []); benchmarks = data.get('benchmarks', {})
     total_vol = max(data.get('totalVolume', 1), 1); bm_defaults = benchmarks.get('_defaults', {})
     avg_aht = data.get('avgAHT', 0); bm_aht = bm_defaults.get('AHT', {}).get('_default', 6.0)
@@ -291,6 +363,21 @@ def _detect_signals(page_context, data, diagnostic, waterfall):
         signals.append({'type': 'cost_outlier', 'severity': 'high',
                         'description': f'${waterfall["totalSaving"]:,.0f} savings across {waterfall.get("totalReduction", 0)} FTE',
                         'metric': 'Total Savings', 'value': f'${waterfall["totalSaving"]:,.0f}'})
+    # v12-#43: Maturity gap signals — surface when dimensions score below target
+    if maturity:
+        mat_overall = maturity.get('overall', 3.0)
+        mat_target = maturity.get('target', 4.0)
+        if mat_overall < mat_target * 0.75:
+            severity = 'high' if mat_overall < 2.5 else 'medium'
+            signals.append({'type': 'maturity_gap', 'severity': severity,
+                            'description': f'Overall maturity {mat_overall:.1f}/5 vs target {mat_target:.1f} — limits transformation readiness',
+                            'metric': 'Maturity', 'value': f'{mat_overall:.1f}/5'})
+        for dim_key, dim_data in maturity.get('dimensions', {}).items():
+            dim_score = dim_data.get('score', 3.0)
+            if dim_score < 2.5:
+                signals.append({'type': 'maturity_gap', 'severity': 'high' if dim_score < 2.0 else 'medium',
+                                'description': f'{dim_data.get("label", dim_key)} maturity at {dim_score:.1f}/5 — critical gap',
+                                'metric': f'{dim_key} Maturity', 'value': f'{dim_score:.1f}/5'})
     page_types = set(PAGE_SIGNALS.get(page_context, []))
     if page_types:
         relevant = [s for s in signals if s['type'] in page_types]

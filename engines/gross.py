@@ -292,12 +292,26 @@ def _gross_location(init, queues, affected_fte, cost, impact, adoption, pools, p
     """
     Location: FTE migrated × cost arbitrage. NO workload reduction.
     The initiative moves people, not removes work.
+    
+    v14 fix: Uses location_readiness (offshoring suitability) instead of
+    migration_readiness (channel migration suitability). Text channels like
+    Chat/Email are EASIER to offshore than Voice (no accent/language barriers).
     """
-    # What % of affected FTE can actually be migrated
+    # What % of affected FTE can actually be migrated offshore
     migratable_share = 0
     total_vol = sum(q['volume'] for q in queues)
     if total_vol > 0:
-        migratable_vol = sum(q['volume'] * q.get('migration_readiness', 0) for q in queues)
+        migratable_vol = 0
+        for q in queues:
+            # v14: Use location-specific readiness, not channel migration readiness
+            loc_readiness = q.get('location_readiness', None)
+            if loc_readiness is None:
+                # Derive from channel + complexity: text channels are most offshorable
+                ch = q.get('channel', '')
+                complexity = q.get('complexity', 0.5)
+                emotional_risk = q.get('emotional_risk', q.get('emotionalRisk', 0.3))
+                loc_readiness = _location_readiness(ch, complexity, emotional_risk)
+            migratable_vol += q['volume'] * loc_readiness
         migratable_share = migratable_vol / total_vol
     
     fte_migrated = affected_fte * migratable_share * impact * adoption
@@ -315,6 +329,33 @@ def _gross_location(init, queues, affected_fte, cost, impact, adoption, pools, p
         'eligible_volume': total_vol,
         '_is_location': True,
     }
+
+
+def _location_readiness(channel, complexity, emotional_risk):
+    """
+    v14: Assess how suitable a queue is for geographic relocation (offshore/nearshore).
+    
+    Unlike channel migration readiness (Voice→Digital), location readiness measures
+    how easily agents handling this work can be moved to a lower-cost geography.
+    Text-based channels (Chat, Email) are MOST suitable — no accent/language barriers.
+    Voice is moderately suitable. Complex or emotionally sensitive work is less suitable.
+    """
+    # Base readiness by channel — text channels are easiest to offshore
+    channel_base = {
+        'Email': 0.85,
+        'Chat': 0.80,
+        'SMS/WhatsApp': 0.75,
+        'Social Media': 0.70,
+        'DIGITAL': 0.70,
+        'MESSAGE': 0.70,
+        'App/Self-Service': 0.60,  # Self-service is already automated, less offshoring gain
+        'IVR': 0.50,               # IVR is automated, limited offshoring gain
+        'Voice': 0.55,             # Voice has accent/language considerations
+    }
+    base = channel_base.get(channel, 0.50)
+    base -= complexity * 0.25         # Complex work harder to offshore (training, QA)
+    base -= emotional_risk * 0.20     # Emotional work needs cultural nuance
+    return round(max(0.05, min(1.0, base)), 3)
 
 
 def _gross_shrinkage(init, affected_fte, cost, impact, adoption, pools, params):

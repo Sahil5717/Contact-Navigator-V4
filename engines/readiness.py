@@ -140,9 +140,10 @@ EFFORT_MONTH_OFFSET = {'low': 0, 'medium': 2, 'high': 4}
 #  MAIN: COMPUTE READINESS CONTEXT
 # ══════════════════════════════════════════════════════════════
 
-def compute_readiness(data, diagnostic):
+def compute_readiness(data, diagnostic, maturity=None):
     """
     Compute the 3 EY readiness scores + derived context from client data.
+    v12-#43: Maturity scores now modulate readiness per layer.
     This context object is used by both initiative scoring and channel strategy.
 
     Returns dict with all computed values.
@@ -288,6 +289,39 @@ def compute_readiness(data, diagnostic):
             'Location Strategy': min(1.0, loc_score / 2.0),  # normalize 0-2 to 0-1
         },
     }
+
+    # v12-#43: Modulate readiness by maturity scores
+    if maturity:
+        mat_dims = maturity.get('dimensions', {})
+        overall_mat = maturity.get('overall', 3.0)
+        # Map maturity dimensions to layers:
+        # AI & Automation ← technology + data dimensions
+        # Operating Model ← process + people dimensions
+        # Location Strategy ← unaffected (geography-driven)
+        tech_mat = mat_dims.get('technology', {}).get('score', overall_mat)
+        data_mat = mat_dims.get('data', {}).get('score', overall_mat)
+        proc_mat = mat_dims.get('process', {}).get('score', overall_mat)
+        people_mat = mat_dims.get('people', {}).get('score', overall_mat)
+
+        # Maturity multiplier: score/5 ranges 0.2-1.0
+        # Low maturity (1-2) → 0.2-0.4x → dampens AI readiness
+        # High maturity (4-5) → 0.8-1.0x → full readiness preserved
+        ai_mat_factor = ((tech_mat + data_mat) / 2) / 5.0
+        om_mat_factor = ((proc_mat + people_mat) / 2) / 5.0
+
+        ctx['readinessMap']['AI & Automation'] = round(
+            ctx['readinessMap']['AI & Automation'] * (0.4 + 0.6 * ai_mat_factor), 4)
+        ctx['readinessMap']['Operating Model'] = round(
+            ctx['readinessMap']['Operating Model'] * (0.4 + 0.6 * om_mat_factor), 4)
+
+        # Store maturity context for downstream use
+        ctx['maturityOverall'] = overall_mat
+        ctx['maturityLevel'] = maturity.get('overallLevel', 2)
+        ctx['maturityDimensions'] = {k: v.get('score', 3.0) for k, v in mat_dims.items()}
+        ctx['maturityFactors'] = {
+            'AI & Automation': round(ai_mat_factor, 3),
+            'Operating Model': round(om_mat_factor, 3),
+        }
 
     return ctx
 

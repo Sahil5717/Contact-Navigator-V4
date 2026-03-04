@@ -1088,13 +1088,16 @@ def run_waterfall(data, initiatives, _skip_sensitivity=False, _skip_scenarios=Fa
     # ── Layer-level FTE breakdown ──
     layer_fte = {'AI & Automation': 0, 'Operating Model': 0, 'Location Strategy': 0}
     layer_saving = {'AI & Automation': 0, 'Operating Model': 0, 'Location Strategy': 0}
+    layer_fte_migrated = {'AI & Automation': 0, 'Operating Model': 0, 'Location Strategy': 0}
     for i in enabled:
         layer = i.get('layer', 'AI & Automation')
         if layer in layer_fte:
             layer_fte[layer] += i.get('_fteImpact', 0)
             layer_saving[layer] += i.get('_annualSaving', 0)
+            layer_fte_migrated[layer] += i.get('_poolConsumed', 0)
     layer_fte = {k: round(v, 1) for k, v in layer_fte.items()}
     layer_saving = {k: round(v) for k, v in layer_saving.items()}
+    layer_fte_migrated = {k: round(v, 1) for k, v in layer_fte_migrated.items()}
     
     # ── Pool utilization summary ──
     pool_utilization = {}
@@ -1171,7 +1174,7 @@ def run_waterfall(data, initiatives, _skip_sensitivity=False, _skip_scenarios=Fa
     return {
         'roleImpact': {k: {'baseline': v['baseline'], 'yearly': [round(y) for y in v['yearly']]}
                        for k, v in role_impact.items()},
-        'layerFTE': layer_fte, 'layerSaving': layer_saving,
+        'layerFTE': layer_fte, 'layerSaving': layer_saving, 'layerFTEMigrated': layer_fte_migrated,
         'yearly': yearly, 'totalNPV': round(total_npv), 'totalSaving': round(total_saving),
         'totalReduction': total_red,
         'grossFTEReduction': gross_fte_reduction,

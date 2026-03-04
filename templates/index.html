@@ -807,19 +807,23 @@ table.data-table tr:hover { background: rgba(246,246,250,0.6); }
     <div class="nav-item" data-page="3">
       <span class="nav-num">3</span><span>Maturity Assessment</span>
     </div>
-
-    <div class="nav-phase">📊 Understand</div>
     <div class="nav-item" data-page="4">
       <span class="nav-num">4</span><span>Performance Heatmap</span>
     </div>
-    <div class="nav-item" data-page="5" style="opacity:0.4;" title="🚧 Parked — Friction scoring under validation">
-      <span class="nav-num">🚧</span><span>Friction Map</span>
+    <div class="nav-item" data-page="5" style="display:none;">
+      <span class="nav-num">5</span><span>Friction Map</span>
     </div>
     <div class="nav-item" data-page="6">
       <span class="nav-num">6</span><span>Gap Analysis</span>
     </div>
     <div class="nav-item" data-page="7">
       <span class="nav-num">7</span><span>Cost Analysis</span>
+    </div>
+    <div class="nav-item" data-page="19">
+      <span class="nav-num">19</span><span>Queue Analysis</span>
+    </div>
+    <div class="nav-item" data-page="18">
+      <span class="nav-num">18</span><span>Sub-Intent Analysis</span>
     </div>
 
     <div class="nav-phase">📐 Size the Prize</div>
@@ -828,6 +832,9 @@ table.data-table tr:hover { background: rgba(246,246,250,0.6); }
     </div>
     <div class="nav-item" data-page="8">
       <span class="nav-num">8</span><span>Self-Service Feasibility</span>
+    </div>
+    <div class="nav-item" data-page="20">
+      <span class="nav-num">20</span><span>Operating Model</span>
     </div>
 
     <div class="nav-phase">💡 Solve</div>
@@ -841,7 +848,7 @@ table.data-table tr:hover { background: rgba(246,246,250,0.6); }
       <span class="nav-num">11</span><span>Implementation Gantt</span>
     </div>
 
-    <div class="nav-phase">🎯 Business Case</div>
+    <div class="nav-phase">🎯 Justify</div>
     <div class="nav-item" data-page="14">
       <span class="nav-num">14</span><span>Impact Dashboard</span>
     </div>
@@ -851,25 +858,12 @@ table.data-table tr:hover { background: rgba(246,246,250,0.6); }
     <div class="nav-item" data-page="12">
       <span class="nav-num">12</span><span>Risk Assessment</span>
     </div>
-    <div class="nav-item" data-page="13" style="opacity:0.4;" title="🚧 Parked — Data outputs under validation">
-      <span class="nav-num">🚧</span><span>Workforce Transition</span>
-    </div>
-    <div class="nav-item" data-page="18">
-      <span class="nav-num">18</span><span>Sub-Intent Analysis</span>
-    </div>
-    <div class="nav-item" data-page="19">
-      <span class="nav-num">19</span><span>Queue Analysis</span>
-    </div>
-    <div class="nav-item" data-page="20">
-      <span class="nav-num">20</span><span>Operating Model</span>
+    <div class="nav-item" data-page="13" style="display:none;">
+      <span class="nav-num">13</span><span>Workforce Transition</span>
     </div>
     <div class="nav-item" data-page="21">
       <span class="nav-num">21</span><span>Scenario Comparison</span>
     </div>
-    <div class="nav-item" data-page="15" style="opacity:0.4;" title="Parked — replaced by Data Management panel">
-      <span class="nav-num">15</span><span>Overrides 🚧</span>
-    </div>
-
     <div class="nav-phase">⚙️ Administration</div>
     <div class="nav-item" data-page="dm" onclick="toggleDataPanel()" style="cursor:pointer;">
       <span class="nav-num" style="font-size:14px;">📁</span><span>Data Management</span><span class="role-admin" style="font-size:9px;background:#FFE600;color:#2E2E38;padding:1px 6px;border-radius:3px;margin-left:6px;">Admin</span>
@@ -1343,6 +1337,85 @@ function _normalizeBenchmarks(data) {
         data.benchmarks = defaultBenchmarks;
     }
     return data;
+}
+
+// ── v12-#45: Flatten nested subIntentEnriched into flat array ──
+function _getSubIntentsFlat(enrichedData) {
+
+// v12-#41/#21: Compact recommendation table builder — themed per diagnostic context
+function _buildCompactRecTable(recs, triggerLabel, theme) {
+  if (!recs || recs.length === 0) return '<em>No linked initiatives found.</em>';
+  const layerColors = {'AI & Automation':'#1A73E8','Operating Model':'#168736','Location Strategy':'#D97706'};
+  const themeColors = { 'hotspot':'#C5003E', 'gap':'#D97706', 'cost':'#168736' };
+  const accentColor = themeColors[theme] || '#666';
+
+  // Theme-specific summary bar
+  let summary = '';
+  const totalFTE = recs.reduce((s,r) => s + (r.fte_impact || r._fteImpact || 0), 0);
+  const totalSaving = recs.reduce((s,r) => s + (r.annual_saving || r._annualSaving || 0), 0);
+  if (theme === 'hotspot') {
+    summary = '<div style="display:flex;gap:16px;margin-bottom:8px;padding:6px 10px;background:#C5003E0A;border-radius:6px;font-size:10px;">' +
+      '<span>🔥 <strong>'+recs.length+'</strong> hotspot-linked initiatives</span>' +
+      '<span>FTE impact: <strong style="color:var(--ey-green);">−'+totalFTE.toFixed(0)+'</strong></span>' +
+      '<span>Top lever: <strong>'+((recs[0]||{}).layer||'—')+'</strong></span></div>';
+  } else if (theme === 'gap') {
+    const signals = recs.reduce((s,r) => s + (r.trigger_details||[]).length, 0);
+    summary = '<div style="display:flex;gap:16px;margin-bottom:8px;padding:6px 10px;background:#D9770610;border-radius:6px;font-size:10px;">' +
+      '<span>📊 <strong>'+signals+'</strong> gap signals addressed</span>' +
+      '<span>FTE impact: <strong style="color:var(--ey-green);">−'+totalFTE.toFixed(0)+'</strong></span>' +
+      '<span>Annual saving: <strong style="color:var(--ey-green);">'+fmt(totalSaving,'$k')+'</strong></span></div>';
+  } else if (theme === 'cost') {
+    summary = '<div style="display:flex;gap:16px;margin-bottom:8px;padding:6px 10px;background:#16873610;border-radius:6px;font-size:10px;">' +
+      '<span>💰 <strong>'+recs.length+'</strong> cost-reduction initiatives</span>' +
+      '<span>Total saving: <strong style="color:var(--ey-green);">'+fmt(totalSaving,'$k')+'/yr</strong></span>' +
+      '<span>FTE: <strong style="color:var(--ey-green);">−'+totalFTE.toFixed(0)+'</strong></span></div>';
+  }
+
+  let html = summary + '<table class="data-table" style="font-size:10px;"><thead><tr style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;"><th style="width:24px;">#</th><th>Initiative</th><th>Layer</th><th>'+(triggerLabel||'Triggers')+'</th><th>Saving</th><th style="width:60px;">FTE</th></tr></thead><tbody>';
+  recs.slice(0, 8).forEach((r, i) => {
+    const lc = layerColors[r.layer] || '#666';
+    const triggers = (r.trigger_details || []).slice(0, 3).map(t => '<span style="display:inline-block;font-size:8px;padding:1px 5px;border-radius:3px;background:'+accentColor+'0A;color:'+accentColor+';margin:1px;border:1px solid '+accentColor+'33;">'+t+'</span>').join('');
+    const fte = r.fte_impact != null ? r.fte_impact.toFixed(1) : (r._fteImpact != null ? r._fteImpact.toFixed(1) : '—');
+    html += '<tr style="border-left:3px solid '+lc+';">' +
+      '<td style="color:var(--ey-text-light);">'+(i+1)+'</td>' +
+      '<td><strong style="font-size:11px;">'+r.name+'</strong></td>' +
+      '<td><span style="font-size:9px;padding:1px 6px;border-radius:4px;background:'+lc+'15;color:'+lc+';font-weight:600;">'+r.layer+'</span></td>' +
+      '<td>'+triggers+'</td>' +
+      '<td style="font-weight:700;color:var(--ey-green);white-space:nowrap;">'+(r.savings_display||'—')+'</td>' +
+      '<td style="font-weight:600;color:var(--ey-blue);text-align:center;">'+fte+'</td>' +
+    '</tr>';
+  });
+  html += '</tbody></table>';
+  if (recs.length > 8) html += '<div style="font-size:9px;color:var(--ey-text-light);margin-top:4px;">+'+(recs.length-8)+' more — open Roadmap (Page 9) for full list.</div>';
+  return html;
+}
+
+    if (!enrichedData || !Array.isArray(enrichedData)) return [];
+    if (enrichedData.length > 0 && enrichedData[0].parentIntent) return enrichedData;
+    const flat = [];
+    enrichedData.forEach(intentObj => {
+        const parentIntent = intentObj.intent || '';
+        const parentVol = intentObj.totalVolume || 0;
+        (intentObj.subIntents || []).forEach(si => {
+            flat.push({
+                parentIntent: parentIntent,
+                subIntent: si.name || si.subIntent || '',
+                name: si.name || si.subIntent || '',
+                volumeShare: typeof si.volumeShare === 'number' ? si.volumeShare : parseFloat(si.volumeShare) || 0,
+                complexity: typeof si.complexity === 'number' ? si.complexity :
+                    si.complexity === 'simple' ? 0.2 : si.complexity === 'moderate' ? 0.5 : si.complexity === 'complex' ? 0.8 : parseFloat(si.complexity) || 0.5,
+                automationPotential: si.automationPotential || 0,
+                feasibilityScore: si.feasibilityScore || 0,
+                deflectableChannels: si.deflectableChannels || [],
+                initiatives: si.initiatives || [],
+                capturedFTE: si.capturedFTE || 0,
+                untappedFTE: si.untappedFTE || 0,
+                primaryLever: si.primaryLever || null,
+                parentVolume: parentVol,
+            });
+        });
+    });
+    return flat;
 }
 
 // ── Step 1: Try __SERVER_DATA (Jinja-injected, most reliable) ──
@@ -1930,8 +2003,8 @@ function renderPage1() {
   const healthColor = health >= 70 ? 'var(--ey-green)' : health >= 40 ? 'var(--ey-amber)' : 'var(--ey-red)';
   const healthVerdict = health >= 70 ? 'Healthy' : health >= 40 ? 'Under Pressure' : 'Critical';
 
-  // Queue analysis
-  const queueScores = DEMO.queues.map(q => ({
+  // Queue analysis — v12-#52: respects BU filter
+  const queueScores = _filteredQueues().map(q => ({
     ...q,
     health: getQueueHealth(q) * 100,
     monthlyCost: q.volume * q.cpc
@@ -1982,7 +2055,7 @@ function renderPage1() {
 
   // Total addressable opportunity
   const totalAddressable = wf.totalSaving || 0;
-  const wastedSpend = DEMO.queues.filter(q => getQueueHealth(q) < 0.70).reduce((s,q) => s + q.volume * q.cpc, 0);
+  const wastedSpend = _filteredQueues().filter(q => getQueueHealth(q) < 0.70).reduce((s,q) => s + q.volume * q.cpc, 0);
 
   const el = document.getElementById('page-1');
   el.innerHTML = `
@@ -1991,7 +2064,7 @@ function renderPage1() {
       <div>
         <div style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--ey-yellow);font-weight:700;margin-bottom:4px;">Contact Centre Diagnostic</div>
         <div style="font-size:18px;font-weight:800;">${DEMO.params?.clientName || 'Client'} — ${DEMO.params?.industry || 'Custom'}</div>
-        <div style="font-size:12px;opacity:0.7;margin-top:2px;">${DEMO.intents?.length||'?'} intents, ${DEMO.channels?.length||'?'} channels, ${DEMO.bus?.length||'?'} BUs — ${DEMO.queues.length} queues analysed</div>
+        <div style="font-size:12px;opacity:0.7;margin-top:2px;">${DEMO.intents?.length||'?'} intents, ${DEMO.channels?.length||'?'} channels, ${DEMO.bus?.length||'?'} BUs — ${_filteredQueues().length} queues analysed${_currentBUFilter !== 'all' ? ' ('+_buLabel()+')' : ''}</div>
       </div>
       <div style="text-align:right;">
         <div style="font-size:11px;opacity:0.6;">Annual Volume</div>
@@ -2012,7 +2085,7 @@ function renderPage1() {
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center;">
               <div><div style="font-size:20px;font-weight:800;color:var(--ey-red);">${redQueues.length}</div><div style="font-size:10px;color:var(--ey-text-light);">Critical Queues</div></div>
               <div><div style="font-size:20px;font-weight:800;color:var(--ey-amber);">${amberQueues.length}</div><div style="font-size:10px;color:var(--ey-text-light);">At Risk</div></div>
-              <div><div style="font-size:20px;font-weight:800;color:var(--ey-green);">${DEMO.queues.length - redQueues.length - amberQueues.length}</div><div style="font-size:10px;color:var(--ey-text-light);">Healthy</div></div>
+              <div><div style="font-size:20px;font-weight:800;color:var(--ey-green);">${queueScores.length - redQueues.length - amberQueues.length}</div><div style="font-size:10px;color:var(--ey-text-light);">Healthy</div></div>
             </div>
           </div>
         </div>
@@ -2255,9 +2328,13 @@ function drawFTEWaterfallChart() {
 
   const baseline = DEMO.totalFTE;
   const layerFTE = WATERFALL.layerFTE || DEMO.layerFTE || {};
+  const layerFTEMigrated = WATERFALL.layerFTEMigrated || {};
+  const layerSav = WATERFALL.layerSaving || DEMO.layerSaving || {};
   const aiRed = layerFTE['AI & Automation'] || 0;
   const opRed = layerFTE['Operating Model'] || 0;
   const locRed = layerFTE['Location Strategy'] || 0;
+  const locMigrated = layerFTEMigrated['Location Strategy'] || 0;
+  const locSaving = layerSav['Location Strategy'] || 0;
   const totalRed = aiRed + opRed + locRed;
   const finalFTE = Math.max(0, baseline - totalRed);
 
@@ -2266,7 +2343,7 @@ function drawFTEWaterfallChart() {
     { label: 'Baseline FTE', value: baseline, color: '#2E2E38', type: 'total' },
     { label: 'AI & Automation', value: -aiRed, color: '#1A73E8', type: 'decrease' },
     { label: 'Operating Model', value: -opRed, color: '#00897B', type: 'decrease' },
-    { label: 'Location Strategy', value: -locRed, color: '#FF9800', type: 'decrease' },
+    { label: 'Location Strategy', value: -locRed, color: '#FF9800', type: 'decrease', migrated: locMigrated, saving: locSaving },
     { label: 'Target FTE', value: finalFTE, color: '#4CAF50', type: 'total' },
   ];
 
@@ -2340,6 +2417,17 @@ function drawFTEWaterfallChart() {
     // X-axis label
     ctx.fillStyle = '#555'; ctx.font = '10px Inter, sans-serif'; ctx.textAlign = 'center';
     ctx.fillText(bar.label, x + barW / 2, H - pad.bottom + 16);
+
+    // v14: Location Strategy annotation — show FTE migrated + saving when FTE reduced is 0
+    if (bar.migrated && bar.migrated > 0) {
+      ctx.fillStyle = '#FF9800'; ctx.font = '9px Inter, sans-serif'; ctx.textAlign = 'center';
+      const annotY = bar.value === 0 ? yScale(runningTotal + (maxVal * 0.03)) : barTop + barHeight + 14;
+      ctx.fillText(bar.migrated.toLocaleString() + ' FTE migrated', x + barW / 2, annotY);
+      if (bar.saving > 0) {
+        const savStr = bar.saving >= 1e6 ? '$' + (bar.saving/1e6).toFixed(1) + 'M' : '$' + (bar.saving/1e3).toFixed(0) + 'K';
+        ctx.fillText(savStr + ' cost arbitrage', x + barW / 2, annotY + 12);
+      }
+    }
   });
 
   // Connector from last decrease to final total
@@ -2563,12 +2651,13 @@ function renderPage2() {
   const dirs = { CSAT: 'higher', FCR: 'higher', AHT: 'lower', CPC: 'lower', Repeat: 'lower', Escalation: 'lower', CES: 'lower' };
   const fmtMap = { CSAT: 'dec', FCR: '%', AHT: 'min', CPC: '$', Repeat: '%', Escalation: '%', CES: 'dec' };
 
-  // Calculate aggregates
-  const totalVol = DEMO.totalVolume;
+  // Calculate aggregates — v12-#52: respects BU filter
+  const _fq2 = _filteredQueues();
+  const totalVol = _fq2.reduce((s,q) => s + q.volume, 0) || 1;
   const agg = {};
   for (const m of metrics) {
     let wsum = 0;
-    for (const q of DEMO.queues) {
+    for (const q of _fq2) {
       const val = m === 'CPC' ? q.cpc : m === 'CSAT' ? q.csat : m === 'FCR' ? q.fcr :
                   m === 'AHT' ? q.aht : m === 'Repeat' ? q.repeat : m === 'Escalation' ? q.escalation : q.ces;
       wsum += val * q.volume;
@@ -2609,7 +2698,7 @@ function renderPage2() {
   // Channel-level benchmarking
   const channelMetrics = {};
   for (const ch of DEMO.channels) {
-    const chQueues = DEMO.queues.filter(q => q.channel === ch);
+    const chQueues = _fq2.filter(q => q.channel === ch);
     if (chQueues.length === 0) continue;
     const chVol = chQueues.reduce((s, q) => s + q.volume, 0);
     channelMetrics[ch] = {
@@ -2992,7 +3081,7 @@ function renderPage3() {
                     <div style="width:100px; height:8px; background:var(--ey-mid-gray); border-radius:4px; overflow:hidden;">
                       <div style="width:${(d.score/4)*100}%; height:100%; background:${color}; border-radius:4px;"></div>
                     </div>
-                    <strong style="color:${color}">${d.score}/4</strong>
+                    <strong style="color:${color}">${typeof d.score === 'number' && d.score % 1 !== 0 ? d.score.toFixed(1) : d.score}/4</strong>
                   </div>
                 </td>
                 <td><span class="badge badge-${d.score >= 3 ? 'low' : d.score >= 2 ? 'medium' : 'critical'}">${lvl}</span></td>
@@ -3009,11 +3098,11 @@ function renderPage3() {
     <!-- v12-#4: Editable Scoring Questions per Dimension -->
     <div class="card">
       <div class="card-title">Scoring Questions <span style="font-size:11px;font-weight:400;color:var(--ey-text-light);margin-left:8px;">Edit responses to adjust maturity scores</span></div>
-      <div style="font-size:11px;color:var(--ey-text-light);margin-bottom:12px;">These questions determine your maturity score. Change answers to reflect your client's actual state.</div>
+      <div style="font-size:11px;color:var(--ey-text-light);margin-bottom:12px;">These questions determine your maturity score across 5 dimensions (${dimensions.reduce((s,d) => s + _getMaturityQuestions(d.name).length, 0)} questions total). Change answers to reflect your client's actual state.</div>
       ${dimensions.map((d, idx) => {
         const qs = _getMaturityQuestions(d.name);
         return '<div style="margin-bottom:16px;border:1px solid var(--ey-mid-gray);border-radius:8px;padding:12px 16px;">' +
-          '<div style="font-size:13px;font-weight:700;margin-bottom:8px;">'+d.name+' <span style="font-size:11px;font-weight:400;color:var(--ey-text-light);">(Current: '+d.score+'/4)</span></div>' +
+          '<div style="font-size:13px;font-weight:700;margin-bottom:8px;">'+d.name+' <span style="font-size:11px;font-weight:400;color:var(--ey-text-light);">('+qs.length+' questions · Current: '+d.score+(typeof d.score==='number'&&d.score%1!==0?'':'.0')+'/4)</span></div>' +
           qs.map((q,qi) => {
             const qKey = d.name+'_q'+qi;
             const currVal = (window._maturityAnswers||{})[qKey];
@@ -3068,26 +3157,47 @@ function _getMaturityQuestions(dimName) {
   const qMap = {
     'Channel Strategy': [
       { question: 'How many contact channels are active?', defaultAnswer: 'few', options: [{value:'one',label:'1 only'},{value:'few',label:'2-3'},{value:'several',label:'4-5'},{value:'many',label:'6+'}] },
-      { question: 'Is self-service available (app/portal)?', defaultAnswer: 'partial', options: [{value:'no',label:'No'},{value:'partial',label:'Basic'},{value:'yes',label:'Full digital'}] },
-      { question: 'Channel routing strategy?', defaultAnswer: 'basic', options: [{value:'none',label:'No routing'},{value:'basic',label:'Skill-based'},{value:'smart',label:'Intent-based'},{value:'ai',label:'AI-orchestrated'}] }
+      { question: 'Is self-service available (app/portal)?', defaultAnswer: 'partial', options: [{value:'no',label:'No'},{value:'partial',label:'Basic'},{value:'yes',label:'Full digital'},{value:'advanced',label:'AI-powered'}] },
+      { question: 'Channel routing strategy?', defaultAnswer: 'basic', options: [{value:'none',label:'No routing'},{value:'basic',label:'Skill-based'},{value:'smart',label:'Intent-based'},{value:'ai',label:'AI-orchestrated'}] },
+      { question: 'Is there a documented channel strategy with target mix?', defaultAnswer: 'no', options: [{value:'no',label:'No strategy'},{value:'informal',label:'Informal guidelines'},{value:'documented',label:'Documented & reviewed'},{value:'dynamic',label:'Dynamic, data-driven'}] },
+      { question: 'How integrated are channels (e.g. context carry-over)?', defaultAnswer: 'siloed', options: [{value:'siloed',label:'Fully siloed'},{value:'partial',label:'Some hand-off'},{value:'integrated',label:'Shared context'},{value:'seamless',label:'Seamless omnichannel'}] },
+      { question: 'Channel performance governance (KPIs, reviews)?', defaultAnswer: 'basic', options: [{value:'none',label:'No tracking'},{value:'basic',label:'Volume only'},{value:'kpi',label:'KPIs per channel'},{value:'advanced',label:'CX + cost optimised'}] },
+      { question: 'Customer channel preference data captured?', defaultAnswer: 'no', options: [{value:'no',label:'Not captured'},{value:'survey',label:'Periodic surveys'},{value:'tracked',label:'Journey-level tracking'},{value:'predictive',label:'Predictive next-best-channel'}] },
     ],
     'Automation & AI': [
       { question: 'IVR/chatbot deployed?', defaultAnswer: 'ivr', options: [{value:'none',label:'None'},{value:'ivr',label:'IVR only'},{value:'chatbot',label:'IVR + Chatbot'},{value:'ai',label:'AI agents'}] },
       { question: 'Self-service containment rate?', defaultAnswer: 'low', options: [{value:'none',label:'0%'},{value:'low',label:'<15%'},{value:'mid',label:'15-30%'},{value:'high',label:'>30%'}] },
-      { question: 'Agent assist tools in use?', defaultAnswer: 'no', options: [{value:'no',label:'None'},{value:'basic',label:'Knowledge base'},{value:'assist',label:'Real-time assist'},{value:'copilot',label:'AI copilot'}] }
+      { question: 'Agent assist tools in use?', defaultAnswer: 'no', options: [{value:'no',label:'None'},{value:'basic',label:'Knowledge base'},{value:'assist',label:'Real-time assist'},{value:'copilot',label:'AI copilot'}] },
+      { question: 'RPA / process automation maturity?', defaultAnswer: 'none', options: [{value:'none',label:'None'},{value:'pilot',label:'Pilot / POC'},{value:'scaled',label:'Scaled (5+ processes)'},{value:'enterprise',label:'Enterprise CoE'}] },
+      { question: 'AI/ML model governance (bias, monitoring)?', defaultAnswer: 'none', options: [{value:'none',label:'No governance'},{value:'adhoc',label:'Ad-hoc reviews'},{value:'framework',label:'Defined framework'},{value:'automated',label:'Automated monitoring'}] },
+      { question: 'Technology readiness for new AI capabilities?', defaultAnswer: 'legacy', options: [{value:'legacy',label:'Legacy systems'},{value:'hybrid',label:'Hybrid (some cloud)'},{value:'cloud',label:'Cloud-native'},{value:'composable',label:'Composable / API-first'}] },
+      { question: 'Intent recognition / NLU capability?', defaultAnswer: 'none', options: [{value:'none',label:'None / menu trees'},{value:'basic',label:'Keyword matching'},{value:'nlu',label:'NLU-based routing'},{value:'genai',label:'GenAI intent classification'}] },
+      { question: 'Who owns the automation roadmap?', defaultAnswer: 'nobody', options: [{value:'nobody',label:'No owner'},{value:'it',label:'IT-led'},{value:'ops',label:'Ops + IT joint'},{value:'coe',label:'Dedicated AI/Automation CoE'}] },
     ],
     'Workforce Model': [
       { question: 'Cross-skilling level?', defaultAnswer: 'some', options: [{value:'none',label:'Single-skilled'},{value:'some',label:'Some cross-skill'},{value:'flex',label:'Flexible pools'},{value:'universal',label:'Universal agents'}] },
       { question: 'WFM sophistication?', defaultAnswer: 'basic', options: [{value:'manual',label:'Spreadsheets'},{value:'basic',label:'Basic WFM tool'},{value:'optimised',label:'Optimised scheduling'},{value:'ai',label:'AI-driven WFM'}] },
-      { question: 'Shrinkage management?', defaultAnswer: 'high', options: [{value:'high',label:'>35%'},{value:'mid',label:'28-35%'},{value:'good',label:'22-28%'},{value:'best',label:'<22%'}] }
+      { question: 'Shrinkage management?', defaultAnswer: 'high', options: [{value:'high',label:'>35%'},{value:'mid',label:'28-35%'},{value:'good',label:'22-28%'},{value:'best',label:'<22%'}] },
+      { question: 'Tiered operating model (L1/L2/L3)?', defaultAnswer: 'informal', options: [{value:'flat',label:'No tiers'},{value:'informal',label:'Informal tiers'},{value:'defined',label:'Defined with SLAs'},{value:'dynamic',label:'Dynamic skill routing'}] },
+      { question: 'Agent attrition rate (annualised)?', defaultAnswer: 'high', options: [{value:'high',label:'>40%'},{value:'mid',label:'25-40%'},{value:'low',label:'15-25%'},{value:'best',label:'<15%'}] },
+      { question: 'Training & onboarding programme?', defaultAnswer: 'basic', options: [{value:'adhoc',label:'Ad-hoc / shadowing'},{value:'basic',label:'Structured classroom'},{value:'blended',label:'Blended + certification'},{value:'continuous',label:'Continuous + AI coach'}] },
+      { question: 'Quality assurance framework?', defaultAnswer: 'basic', options: [{value:'none',label:'No QA'},{value:'basic',label:'Random sampling'},{value:'systematic',label:'Systematic + calibration'},{value:'ai',label:'AI-powered 100% monitoring'}] },
     ],
     'Analytics': [
       { question: 'Reporting maturity?', defaultAnswer: 'dash', options: [{value:'adhoc',label:'Ad-hoc'},{value:'dash',label:'Dashboards'},{value:'realtime',label:'Real-time'},{value:'predictive',label:'Predictive'}] },
-      { question: 'Root cause analysis capability?', defaultAnswer: 'no', options: [{value:'no',label:'None'},{value:'manual',label:'Manual review'},{value:'analytics',label:'Analytics-driven'},{value:'auto',label:'Automated RCA'}] }
+      { question: 'Root cause analysis capability?', defaultAnswer: 'no', options: [{value:'no',label:'None'},{value:'manual',label:'Manual review'},{value:'analytics',label:'Analytics-driven'},{value:'auto',label:'Automated RCA'}] },
+      { question: 'Customer journey analytics in place?', defaultAnswer: 'no', options: [{value:'no',label:'None'},{value:'basic',label:'Touchpoint tracking'},{value:'journey',label:'End-to-end journeys'},{value:'predictive',label:'Predictive journey AI'}] },
+      { question: 'Data quality & integration across systems?', defaultAnswer: 'siloed', options: [{value:'siloed',label:'Siloed systems'},{value:'partial',label:'Some integration'},{value:'unified',label:'Unified data lake'},{value:'realtime',label:'Real-time 360° view'}] },
+      { question: 'Speech / interaction analytics deployed?', defaultAnswer: 'none', options: [{value:'none',label:'None'},{value:'recording',label:'Recording only'},{value:'speech',label:'Speech analytics'},{value:'sentiment',label:'Real-time sentiment'}] },
+      { question: 'Data governance & ownership model?', defaultAnswer: 'none', options: [{value:'none',label:'No governance'},{value:'informal',label:'Informal ownership'},{value:'defined',label:'Data stewards defined'},{value:'mature',label:'Mature governance framework'}] },
     ],
     'Customer Experience': [
       { question: 'Proactive outreach capability?', defaultAnswer: 'none', options: [{value:'none',label:'Reactive only'},{value:'basic',label:'Confirmations'},{value:'proactive',label:'Proactive outreach'},{value:'anticipatory',label:'Anticipatory CX'}] },
-      { question: 'Personalization level?', defaultAnswer: 'basic', options: [{value:'none',label:'None'},{value:'basic',label:'Name/account'},{value:'context',label:'Context-aware'},{value:'predictive',label:'Predictive needs'}] }
+      { question: 'Personalization level?', defaultAnswer: 'basic', options: [{value:'none',label:'None'},{value:'basic',label:'Name/account'},{value:'context',label:'Context-aware'},{value:'predictive',label:'Predictive needs'}] },
+      { question: 'Voice of Customer programme?', defaultAnswer: 'basic', options: [{value:'none',label:'No VoC'},{value:'basic',label:'Post-call survey'},{value:'program',label:'Multi-channel VoC'},{value:'closedloop',label:'Closed-loop with actions'}] },
+      { question: 'Customer journey mapping maturity?', defaultAnswer: 'none', options: [{value:'none',label:'Not mapped'},{value:'static',label:'Static maps exist'},{value:'data',label:'Data-validated journeys'},{value:'continuous',label:'Continuous optimisation'}] },
+      { question: 'Effort reduction strategy (CES)?', defaultAnswer: 'none', options: [{value:'none',label:'Not measured'},{value:'measured',label:'CES tracked'},{value:'actioned',label:'Friction removal programme'},{value:'designed',label:'Zero-effort by design'}] },
+      { question: 'CX governance (executive sponsorship, CX board)?', defaultAnswer: 'none', options: [{value:'none',label:'No governance'},{value:'informal',label:'Informal reviews'},{value:'board',label:'CX governance board'},{value:'embedded',label:'CX embedded in P&L'}] },
     ]
   };
   return qMap[dimName] || [];
@@ -3110,7 +3220,10 @@ function handleMaturityAnswer(qKey, value, dimIdx) {
     const optIdx = q.options.findIndex(o => o.value === ans);
     total += (optIdx + 1); // 1-based score per question
   });
-  const avgScore = Math.min(4, Math.max(1, Math.round(total / qs.length)));
+  // v12-#42: With 5-8 questions per dimension, use decimal precision
+  const maxPossible = qs.length * 4;
+  const normalised = (total / maxPossible) * 4; // Scale to 0-4
+  const avgScore = Math.min(4, Math.max(1, parseFloat(normalised.toFixed(1))));
 
   // Store as override
   if (!window._maturityOverrides) window._maturityOverrides = {};
@@ -3286,8 +3399,8 @@ function showMaturityDrillDown(dimIndex) {
     <div style="font-size:13px;">
       <!-- Current score banner -->
       <div style="text-align:center; margin-bottom:16px; padding:12px; border-radius:8px; background:${dim.score >= 3 ? 'var(--ey-green-bg)' : dim.score >= 2 ? 'var(--ey-amber-bg)' : 'var(--ey-red-bg)'};">
-        <div style="font-size:28px; font-weight:800; color:${color};">${dim.score}/4</div>
-        <div style="font-weight:700;">${labels[dim.score]}</div>
+        <div style="font-size:28px; font-weight:800; color:${color};">${typeof dim.score === 'number' && dim.score % 1 !== 0 ? dim.score.toFixed(1) : dim.score}/4</div>
+        <div style="font-weight:700;">${labels[Math.round(dim.score)]}</div>
       </div>
 
       <!-- Input Data Used -->
@@ -3331,6 +3444,25 @@ function showMaturityDrillDown(dimIndex) {
             <div style="font-size:11px; color:var(--ey-text-light); margin-top:4px;">${levelDesc[dim.name][lvl - 1]}</div>
           </div>
         `).join('')}
+      </div>
+
+      <!-- v12-#42: Question Response Summary -->
+      <div style="font-weight:700; margin-bottom:8px;">📋 Assessment Questions (${_getMaturityQuestions(dim.name).length} questions)</div>
+      <div style="margin-bottom:16px;">
+        ${_getMaturityQuestions(dim.name).map((q, qi) => {
+          const key = dim.name + '_q' + qi;
+          const ans = (window._maturityAnswers || {})[key] || q.defaultAnswer;
+          const optIdx = q.options.findIndex(o => o.value === ans);
+          const optLabel = q.options[optIdx]?.label || ans;
+          const scoreVal = optIdx + 1;
+          const barColor = scoreVal >= 3 ? 'var(--ey-green)' : scoreVal >= 2 ? 'var(--ey-amber)' : 'var(--ey-red)';
+          return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:11px;border-bottom:1px solid var(--ey-light-gray);">' +
+            '<div style="flex:1;color:var(--ey-text);">' + q.question + '</div>' +
+            '<div style="min-width:100px;font-weight:600;">' + optLabel + '</div>' +
+            '<div style="width:40px;height:6px;background:var(--ey-mid-gray);border-radius:3px;overflow:hidden;"><div style="width:' + (scoreVal/4*100) + '%;height:100%;background:' + barColor + ';border-radius:3px;"></div></div>' +
+            '<div style="min-width:24px;text-align:center;font-weight:700;color:' + barColor + ';">' + scoreVal + '</div>' +
+          '</div>';
+        }).join('')}
       </div>
 
       <!-- Override Control -->
@@ -3619,6 +3751,7 @@ if (DEMO.waterfall && DEMO.waterfall.yearly) {
     WATERFALL.totalReduction = DEMO.waterfall.totalReduction || WATERFALL.totalReduction || 0;
     WATERFALL.layerFTE = DEMO.waterfall.layerFTE || WATERFALL.layerFTE || {};
     WATERFALL.layerSaving = DEMO.waterfall.layerSaving || WATERFALL.layerSaving || {};
+    WATERFALL.layerFTEMigrated = DEMO.waterfall.layerFTEMigrated || WATERFALL.layerFTEMigrated || {};
 }
 
 // Apply server initiative scores if available
@@ -4013,8 +4146,9 @@ function renderPage4() {
   const selMetric = window._heatMetric;
   const selBU = window._heatBU;
 
-  // Filter queues
-  const filteredQ = selBU === 'All' ? DEMO.queues : DEMO.queues.filter(q => q.bu === selBU);
+  // Filter queues — v12-#52: global BU filter as base, then page-level BU filter on top
+  const _baseQ = _filteredQueues();
+  const filteredQ = selBU === 'All' ? _baseQ : _baseQ.filter(q => q.bu === selBU);
 
   // Helper functions (must be defined before sort logic)
   function cellScore(intent, channel) {
@@ -4140,13 +4274,7 @@ function renderPage4() {
         return;
       }
       const recs = data.recommendations.slice(0, 8);
-      let html = '<table class="data-table"><thead><tr><th>#</th><th>Initiative</th><th>Layer</th><th>Linked Hotspots</th><th>Impact</th></tr></thead><tbody>';
-      recs.forEach((r, i) => {
-        const triggers = (r.trigger_details || []).slice(0, 3).map(t => '<span style="display:inline-block;font-size:9px;padding:1px 6px;border-radius:4px;background:var(--ey-red-bg);margin:1px;">'+t+'</span>').join('');
-        html += '<tr><td>'+(i+1)+'</td><td><strong>'+r.name+'</strong></td><td><span class="badge badge-'+(r.layer==='AI & Technology'?'low':r.layer==='Operating Model'?'medium':'critical')+'">'+r.layer+'</span></td><td>'+triggers+'</td><td style="font-weight:600;color:var(--ey-green);">'+r.savings_display+'</td></tr>';
-      });
-      html += '</tbody></table>';
-      document.getElementById('heatmap-linkage-body').innerHTML = html;
+      document.getElementById('heatmap-linkage-body').innerHTML = _buildCompactRecTable(data.recommendations, 'Linked Hotspots', 'hotspot');
     })
     .catch(() => {
       document.getElementById('heatmap-linkage-body').innerHTML = '<em>Could not load recommendations.</em>';
@@ -4223,8 +4351,8 @@ function showHeatDrillDown(intent, channel) {
    ═══════════════════════════════════════════════════════════════ */
 function renderPage5() {
   const el = document.getElementById('page-5');
-  const qs = DEMO.queues;
-  const totalVol = DEMO.totalVolume;
+  const qs = _filteredQueues();
+  const totalVol = _filteredVolume();
   const medVol = [...qs].sort((a,b) => a.volume - b.volume)[Math.floor(qs.length/2)].volume;
 
   // Friction score = 0.35*repeat + 0.25*escalation + 0.25*(ces/5) + 0.15*(1-fcr)
@@ -4299,6 +4427,42 @@ function renderPage5() {
   // Draw bubble chart
   drawFrictionBubble(scored);
 
+  // v12-#8: Explicit escalation breakout — 22%+ alert
+  const escHotspots = scored.filter(q => q.escalation > 0.22).sort((a,b) => b.escalation - a.escalation);
+  if (escHotspots.length > 0) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = 'card';
+    alertDiv.style.cssText = 'border-left:4px solid var(--ey-red);background:linear-gradient(135deg,#FFF5F5,#FFEBEE);margin-bottom:16px;';
+    const escVol = escHotspots.reduce((s,q) => s + Math.round(q.volume * q.escalation), 0);
+    const escCost = escHotspots.reduce((s,q) => s + q.volume * q.escalation * (q.cpc * 1.8), 0); // escalated cost ~1.8x
+    alertDiv.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <span style="font-size:20px;">🚨</span>
+        <div>
+          <div style="font-weight:800;font-size:14px;color:var(--ey-red);">Critical Escalation Alert — ${escHotspots.length} queue(s) exceed 22% escalation</div>
+          <div style="font-size:11px;color:var(--ey-text-light);">These queues generate ~${fmt(escVol,'int')} escalations/mo costing est. ${fmt(escCost*12,'$m')}/yr (at 1.8× base CPC)</div>
+        </div>
+      </div>
+      <table class="data-table" style="font-size:11px;">
+        <thead><tr><th>Intent</th><th>Channel</th><th>BU</th><th>Escalation</th><th>Volume</th><th>Monthly Escalations</th><th>Est. Annual Cost</th><th>Root Cause Signal</th></tr></thead>
+        <tbody>
+          ${escHotspots.slice(0,10).map(q => {
+            const rootCause = q.fcr < 0.65 ? 'Low FCR ('+fmt(q.fcr,'%')+')' : q.repeat > 0.15 ? 'High repeat ('+fmt(q.repeat,'%')+')' : q.ces > 3.5 ? 'High effort (CES '+q.ces.toFixed(1)+')' : 'Complex intent';
+            return '<tr><td><strong>'+q.intent+'</strong></td><td>'+q.channel+'</td><td>'+q.bu+'</td>' +
+              '<td style="font-weight:700;color:var(--ey-red);">'+fmt(q.escalation,'%')+'</td>' +
+              '<td>'+fmt(q.volume,'int')+'</td>' +
+              '<td style="font-weight:600;">'+fmt(Math.round(q.volume*q.escalation),'int')+'</td>' +
+              '<td>'+fmt(q.volume*q.escalation*q.cpc*1.8*12,'$k')+'</td>' +
+              '<td style="font-size:10px;"><span style="background:var(--ey-amber-bg);padding:1px 6px;border-radius:3px;">'+rootCause+'</span></td></tr>';
+          }).join('')}
+        </tbody>
+      </table>`;
+    el.appendChild(alertDiv);
+    // Move it before the So What card
+    const soWhat = el.querySelector('[style*="FFFDE7"]');
+    if (soWhat) el.insertBefore(alertDiv, soWhat);
+  }
+
   // So What box
   const soWhatCard = document.createElement('div');
   soWhatCard.className = 'card';
@@ -4371,7 +4535,7 @@ function renderPage6() {
     { key:'ces', name:'CES', dir:'lower', fmt:'dec' }
   ];
 
-  const qs = DEMO.queues.map(q => ({
+  const qs = _filteredQueues().map(q => ({
     ...q,
     health: getQueueHealth(q),
     mismatch: q.complexity > 0.5 && q.capability < 0.5 ? 'Failure Zone' :
@@ -4386,7 +4550,7 @@ function renderPage6() {
   // v12-#10: All 7 metric gaps with current vs benchmark
   const totalVol = DEMO.totalVolume;
   const metricGaps = metricDefs.map(md => {
-    const avg = DEMO.queues.reduce((s,q) => s + q[md.key] * q.volume, 0) / totalVol;
+    const avg = qs.reduce((s,q) => s + q[md.key] * q.volume, 0) / Math.max(qs.reduce((s,q)=>s+q.volume,0),1);
     const bmVal = (bm[md.name]||{}).global || 0;
     const gapPct = md.dir === 'higher' ? ((avg - bmVal)/bmVal)*100 : ((bmVal - avg)/bmVal)*100;
     const score = metricScoreNorm(avg, bmVal, md.dir);
@@ -4399,12 +4563,17 @@ function renderPage6() {
   // Root cause analysis — all red queues with ALL 7 metrics scored
   const redQueues = qs.filter(q => q.health < 0.70).sort((a,b) => a.health - b.health).slice(0, 15);
   const rootCauses = redQueues.map(q => {
-    const scores = metricDefs.map(md => ({
-      metric: md.name,
-      score: metricScoreNorm(q[md.key], (bm[md.name]||{}).global, md.dir),
-      val: q[md.key],
-      bm: (bm[md.name]||{}).global
-    }));
+    const chKey = (q.channel||'').toLowerCase().includes('ivr') ? 'ivr' : (q.channel||'').toLowerCase().includes('chat') ? 'chat' : (q.channel||'').toLowerCase().includes('email') ? 'email' : 'voice';
+    const scores = metricDefs.map(md => {
+      const bmObj = bm[md.name] || bm._defaults?.[md.name] || {};
+      const bmVal = bmObj[chKey] || bmObj._default || bmObj.global || getBmVal(md.name, chKey);
+      return {
+        metric: md.name,
+        score: bmVal ? metricScoreNorm(q[md.key]||0, bmVal, md.dir) : 0.5,
+        val: q[md.key],
+        bm: bmVal
+      };
+    });
     scores.sort((a,b) => a.score - b.score);
     const top3 = scores.slice(0, 3);
     // Root cause narrative
@@ -4499,13 +4668,7 @@ function renderPage6() {
         return;
       }
       const recs = data.recommendations.slice(0, 8);
-      let html = '<table class="data-table"><thead><tr><th>#</th><th>Initiative</th><th>Layer</th><th>Addresses</th><th>Impact</th></tr></thead><tbody>';
-      recs.forEach((r, i) => {
-        const triggers = (r.trigger_details || []).slice(0, 3).map(t => '<span style="display:inline-block;font-size:9px;padding:1px 6px;border-radius:4px;background:var(--ey-red-bg);margin:1px;">'+t+'</span>').join('');
-        html += '<tr><td>'+(i+1)+'</td><td><strong>'+r.name+'</strong></td><td><span class="badge badge-'+(r.layer==='AI & Technology'?'low':r.layer==='Operating Model'?'medium':'critical')+'">'+r.layer+'</span></td><td>'+triggers+'</td><td style="font-weight:600;color:var(--ey-green);">'+r.savings_display+'</td></tr>';
-      });
-      html += '</tbody></table>';
-      document.getElementById('gap-linkage-body').innerHTML = html;
+      document.getElementById('gap-linkage-body').innerHTML = _buildCompactRecTable(data.recommendations, 'Addresses', 'gap');
     })
     .catch(() => {
       document.getElementById('gap-linkage-body').innerHTML = '<em>Could not load recommendations.</em>';
@@ -4559,10 +4722,11 @@ function renderPage7() {
   const el = document.getElementById('page-7');
   const bm = DEMO.benchmarks;
   const bmCPC = (bm.CPC||{}).global || 8.50;
+  const _qs = _filteredQueues();
 
   // Cost by intent
   const intentCosts = DEMO.intents.map(intent => {
-    const qs = DEMO.queues.filter(q => q.intent === intent);
+    const qs = _qs.filter(q => q.intent === intent);
     const cost = qs.reduce((s,q) => s + q.volume * q.cpc, 0);
     const vol = qs.reduce((s,q) => s + q.volume, 0);
     return { intent, cost, vol, cpc: vol > 0 ? cost/vol : 0 };
@@ -4570,20 +4734,20 @@ function renderPage7() {
 
   // Cost by channel
   const channelCosts = DEMO.channels.map(ch => {
-    const qs = DEMO.queues.filter(q => q.channel === ch);
+    const qs = _qs.filter(q => q.channel === ch);
     const cost = qs.reduce((s,q) => s + q.volume * q.cpc, 0);
     const vol = qs.reduce((s,q) => s + q.volume, 0);
     return { channel: ch, cost, vol, cpc: vol > 0 ? cost/vol : 0 };
   }).sort((a,b) => b.cost - a.cost);
 
-  const totalCost = DEMO.queues.reduce((s,q) => s + q.volume * q.cpc, 0);
+  const totalCost = _qs.reduce((s,q) => s + q.volume * q.cpc, 0);
 
   // Top 10 most expensive queues
-  const topQueues = [...DEMO.queues].map(q => ({...q, monthlyCost: q.volume * q.cpc, health: getQueueHealth(q)}))
+  const topQueues = [..._qs].map(q => ({...q, monthlyCost: q.volume * q.cpc, health: getQueueHealth(q)}))
     .sort((a,b) => b.monthlyCost - a.monthlyCost).slice(0, 10);
 
   // v12-#13: Correct Wasted Spend — cost in red queues * (1 - health) for proportional waste
-  const redQueues = DEMO.queues.filter(q => getQueueHealth(q) < 0.70);
+  const redQueues = _qs.filter(q => getQueueHealth(q) < 0.70);
   const wastedSpend = redQueues.reduce((s,q) => {
     const h = getQueueHealth(q);
     return s + q.volume * q.cpc * (1 - h);
@@ -4593,7 +4757,7 @@ function renderPage7() {
   const costFindings = [];
   DEMO.channels.forEach(ch => {
     const chBm = getChannelBenchmark(ch, 'CPC') || bmCPC;
-    DEMO.queues.filter(q => q.channel === ch).forEach(q => {
+    _qs.filter(q => q.channel === ch).forEach(q => {
       if (q.cpc > chBm) {
         const gapPct = ((q.cpc - chBm) / chBm * 100);
         const excessCost = q.volume * (q.cpc - chBm);
@@ -4663,10 +4827,63 @@ function renderPage7() {
         </tbody>
       </table></div>
     </div>
+
+    <!-- v12-#46: Sub-Intent Cost Breakdown -->
+    <div class="card">
+      <div class="card-title">Sub-Intent Cost Breakdown</div>
+      <div style="font-size:11px;color:var(--ey-text-light);margin-bottom:8px;">Cost distribution at sub-intent level — identifies which sub-intents drive excess spend within each intent category.</div>
+      <div id="si-cost-body" style="font-size:12px;color:var(--ey-text-light);">Loading sub-intent cost data...</div>
+    </div>
   `;
 
   drawHorizBars('costByIntent', intentCosts.slice(0,10).map(c => ({label: c.intent.substring(0,18), value: c.cost})), '$k');
   drawHorizBars('cpcByChannel', channelCosts.map(c => ({label: c.channel.split('/')[0], value: c.cpc})), '$');
+
+  // v12-#46: Populate sub-intent cost breakdown
+  setTimeout(() => {
+    const siData = _getSubIntentsFlat(DEMO.subIntentEnriched);
+    const body = document.getElementById('si-cost-body');
+    if (!body) return;
+    if (siData.length === 0) {
+      body.innerHTML = '<em>Sub-intent data not available. Run analysis from Page 18.</em>';
+      return;
+    }
+    const byIntent = {};
+    siData.forEach(si => {
+      if (!byIntent[si.parentIntent]) byIntent[si.parentIntent] = [];
+      byIntent[si.parentIntent].push(si);
+    });
+    let html = '<table class="data-table" style="font-size:10px;"><thead><tr><th>Intent</th><th>Sub-Intent</th><th>Vol Share</th><th>Complexity</th><th>Est. CPC</th><th>vs Benchmark</th><th>Monthly Cost</th><th>Excess Spend</th></tr></thead><tbody>';
+    Object.keys(byIntent).sort().forEach(intent => {
+      const intentQs = _qs.filter(q => q.intent === intent);
+      const intentVol = intentQs.reduce((s,q) => s + q.volume, 0);
+      const intentAvgCPC = intentVol > 0 ? intentQs.reduce((s,q) => s + q.volume * q.cpc, 0) / intentVol : 0;
+      const subs = byIntent[intent].sort((a,b) => (b.volumeShare||0) - (a.volumeShare||0));
+      subs.forEach((si, idx) => {
+        const siVol = intentVol * (si.volumeShare || 0);
+        const cplx = si.complexity || 0.5;
+        const cplxMult = cplx < 0.33 ? 0.7 : cplx < 0.66 ? 1.0 : 1.4;
+        const siCPC = intentAvgCPC * cplxMult;
+        const bmCPC = getChannelBenchmark('Voice', 'CPC') || (bm.CPC||{}).global || 8.50;
+        const siMonthlyCost = siVol * siCPC;
+        const excess = siCPC > bmCPC ? siVol * (siCPC - bmCPC) : 0;
+        const exColor = excess > 0 ? 'var(--ey-red)' : 'var(--ey-green)';
+        const cplxLabel = cplx < 0.33 ? 'Simple' : cplx < 0.66 ? 'Moderate' : 'Complex';
+        html += '<tr' + (idx === 0 ? ' style="border-top:2px solid var(--ey-mid-gray);"' : '') + '>' +
+          '<td>' + (idx === 0 ? '<strong>' + intent + '</strong>' : '') + '</td>' +
+          '<td>' + (si.subIntent || si.name) + '</td>' +
+          '<td>' + ((si.volumeShare||0)*100).toFixed(0) + '%</td>' +
+          '<td><span style="color:' + (cplx >= 0.66 ? 'var(--ey-red)' : cplx >= 0.33 ? 'var(--ey-amber)' : 'var(--ey-green)') + ';font-weight:600;">' + cplxLabel + '</span></td>' +
+          '<td>' + fmt(siCPC,'$') + '</td>' +
+          '<td style="color:' + (siCPC > bmCPC ? 'var(--ey-red)' : 'var(--ey-green)') + ';">' + (siCPC > bmCPC ? '+' : '') + ((siCPC/bmCPC-1)*100).toFixed(0) + '%</td>' +
+          '<td style="font-weight:600;">' + fmt(siMonthlyCost,'$k') + '</td>' +
+          '<td style="color:' + exColor + ';font-weight:700;">' + (excess > 0 ? fmt(excess,'$k') : '—') + '</td>' +
+        '</tr>';
+      });
+    });
+    html += '</tbody></table>';
+    body.innerHTML = html;
+  }, 100);
 
   // v12-#11: Fetch cost-context-specific recommendations (ranked by cost impact)
   fetch('/api/recommendations/cost_analysis')
@@ -4676,15 +4893,7 @@ function renderPage7() {
         document.getElementById('cost-linkage-body').innerHTML = '<em>No cost-linked initiatives found.</em>';
         return;
       }
-      const recs = data.recommendations.slice(0, 8);
-      let html = '<table class="data-table"><thead><tr><th>#</th><th>Initiative</th><th>Layer</th><th>Cost Triggers</th><th>Annual Savings</th></tr></thead><tbody>';
-      recs.forEach((r, i) => {
-        const triggers = (r.trigger_details || []).slice(0, 3).map(t => '<span style="display:inline-block;font-size:9px;padding:1px 6px;border-radius:4px;background:var(--ey-red-bg);margin:1px;">'+t+'</span>').join('');
-        html += '<tr><td>'+(i+1)+'</td><td><strong>'+r.name+'</strong></td><td><span class="badge badge-'+(r.layer==='AI & Technology'?'low':r.layer==='Operating Model'?'medium':'critical')+'">'+r.layer+'</span></td><td>'+triggers+'</td><td style="font-weight:600;color:var(--ey-green);">'+r.savings_display+'</td></tr>';
-      });
-      html += '</tbody></table>';
-      document.getElementById('cost-linkage-body').innerHTML = html;
-    })
+      document.getElementById('cost-linkage-body').innerHTML = _buildCompactRecTable(data.recommendations, 'Cost Triggers', 'cost');
     .catch(() => {
       document.getElementById('cost-linkage-body').innerHTML = '<em>Could not load recommendations.</em>';
     });
@@ -4725,8 +4934,9 @@ function renderPage8() {
   window._ssThreshold = window._ssThreshold || 30; // default 30%
 
   function buildSSPage(threshold) {
+    const _fq = _filteredQueues();
     const intentFeasibility = DEMO.intents.map(intent => {
-      const qs = DEMO.queues.filter(q => q.intent === intent);
+      const qs = _fq.filter(q => q.intent === intent);
       const tv = qs.reduce((s,q) => s + q.volume, 0);
       const cmplx = DEMO.intentComplexity[intent];
       const ssVol = qs.filter(q => ['App/Self-Service','IVR','SMS/WhatsApp'].includes(q.channel)).reduce((s,q) => s + q.volume, 0);
@@ -4794,8 +5004,8 @@ function renderPage8() {
           <tbody>
             ${intentFeasibility.map((i, idx) => {
               const fc = i.feasibility >= 60 ? 'green' : i.feasibility >= threshold ? 'amber' : 'red';
-              // v12-#22: Get sub-intent data for this intent
-              const siData = (DEMO.subIntentEnriched || []).filter(si => si.parentIntent === i.intent);
+              // v12-#22/#45: Get sub-intent data for this intent (flattened from nested structure)
+              const siData = _getSubIntentsFlat(DEMO.subIntentEnriched).filter(si => si.parentIntent === i.intent);
               const hasSubIntents = siData.length > 0;
               let intentRow = `<tr${i.feasibility < threshold ? ' style="opacity:0.5;"' : ''} ${hasSubIntents ? 'style="cursor:pointer;" onclick="document.getElementById(\'si-ss-'+idx+'\').style.display=document.getElementById(\'si-ss-'+idx+'\').style.display===\'none\'?\'table-row-group\':\'none\'"' : ''}>
                 <td>${i.intent} ${hasSubIntents ? '<span style="font-size:9px;color:var(--ey-blue);">▸ '+siData.length+' sub-intents</span>' : ''}</td>
@@ -5257,6 +5467,128 @@ function openInitEditor(idx) {
       </div>
       <div style="font-size:10px;color:var(--ey-text-light);">S-curve ramp: impacts are phased over the implementation horizon. Adjust per initiative.</div>
     </div>
+
+    <!-- v12-#48: Layer-Specific Configuration Fields -->
+    ${init.layer === 'AI & Automation' ? `
+    <div style="background:#E3F2FD;padding:12px;border-radius:8px;margin-top:8px;border-left:3px solid #1A73E8;">
+      <div style="font-size:11px;font-weight:700;color:#1A73E8;margin-bottom:8px;">🤖 AI & Technology Configuration</div>
+      <div class="init-field-row3">
+        <div class="init-field">
+          <label>Tech Readiness</label>
+          <select id="ie_techReadiness" onchange="INITIATIVES[${idx}]._techReadiness=this.value">
+            <option value="legacy" ${(init._techReadiness||'')=='legacy'?'selected':''}>Legacy (high risk)</option>
+            <option value="hybrid" ${(init._techReadiness||'hybrid')=='hybrid'?'selected':''}>Hybrid</option>
+            <option value="cloud" ${(init._techReadiness||'')=='cloud'?'selected':''}>Cloud-native</option>
+            <option value="composable" ${(init._techReadiness||'')=='composable'?'selected':''}>Composable/API-first</option>
+          </select>
+        </div>
+        <div class="init-field">
+          <label>AI Model Type</label>
+          <select id="ie_aiModel" onchange="INITIATIVES[${idx}]._aiModel=this.value">
+            <option value="rules" ${(init._aiModel||'rules')=='rules'?'selected':''}>Rules-based</option>
+            <option value="ml" ${(init._aiModel||'')=='ml'?'selected':''}>ML / NLU</option>
+            <option value="genai" ${(init._aiModel||'')=='genai'?'selected':''}>GenAI / LLM</option>
+          </select>
+        </div>
+        <div class="init-field">
+          <label>Data Dependency</label>
+          <select id="ie_dataDep" onchange="INITIATIVES[${idx}]._dataDep=this.value">
+            <option value="low" ${(init._dataDep||'low')=='low'?'selected':''}>Low (config only)</option>
+            <option value="medium" ${(init._dataDep||'')=='medium'?'selected':''}>Medium (historical)</option>
+            <option value="high" ${(init._dataDep||'')=='high'?'selected':''}>High (real-time)</option>
+          </select>
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--ey-text-light);margin-top:4px;">Tech readiness affects implementation timeline and cost estimates. Low readiness = longer ramp, higher investment.</div>
+    </div>` : ''}
+    ${init.layer === 'Operating Model' ? `
+    <div style="background:#E8F5E9;padding:12px;border-radius:8px;margin-top:8px;border-left:3px solid #168736;">
+      <div style="font-size:11px;font-weight:700;color:#168736;margin-bottom:8px;">⚙️ Operating Model Configuration</div>
+      <div class="init-field-row3">
+        <div class="init-field">
+          <label>Process Scope</label>
+          <select id="ie_processScope" onchange="INITIATIVES[${idx}]._processScope=this.value">
+            <option value="single" ${(init._processScope||'')=='single'?'selected':''}>Single process</option>
+            <option value="team" ${(init._processScope||'team')=='team'?'selected':''}>Team-level</option>
+            <option value="operation" ${(init._processScope||'')=='operation'?'selected':''}>Full operation</option>
+            <option value="enterprise" ${(init._processScope||'')=='enterprise'?'selected':''}>Enterprise-wide</option>
+          </select>
+        </div>
+        <div class="init-field">
+          <label>Tier Structure Change</label>
+          <select id="ie_tierChange" onchange="INITIATIVES[${idx}]._tierChange=this.value">
+            <option value="none" ${(init._tierChange||'none')=='none'?'selected':''}>No change</option>
+            <option value="add" ${(init._tierChange||'')=='add'?'selected':''}>Add tier</option>
+            <option value="merge" ${(init._tierChange||'')=='merge'?'selected':''}>Merge tiers</option>
+            <option value="redesign" ${(init._tierChange||'')=='redesign'?'selected':''}>Full redesign</option>
+          </select>
+        </div>
+        <div class="init-field">
+          <label>Change Mgmt Intensity</label>
+          <select id="ie_changeMgmt" onchange="INITIATIVES[${idx}]._changeMgmt=this.value">
+            <option value="low" ${(init._changeMgmt||'')=='low'?'selected':''}>Low (training only)</option>
+            <option value="medium" ${(init._changeMgmt||'medium')=='medium'?'selected':''}>Medium</option>
+            <option value="high" ${(init._changeMgmt||'')=='high'?'selected':''}>High (culture shift)</option>
+          </select>
+        </div>
+      </div>
+      <div class="init-field" style="margin-top:6px;">
+        <label>BU Mix (% split across business units)</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          ${allBUs.map(bu => {
+            const buPct = (init._buMix || {})[bu] || Math.round(100/allBUs.length);
+            return '<div style="display:flex;align-items:center;gap:4px;font-size:10px;"><span>' + bu + ':</span><input type="number" value="' + buPct + '" min="0" max="100" step="5" style="width:40px;font-size:10px;text-align:center;border:1px solid var(--ey-mid-gray);border-radius:3px;padding:1px;" onchange="if(!INITIATIVES[' + idx + ']._buMix)INITIATIVES[' + idx + ']._buMix={};INITIATIVES[' + idx + ']._buMix[\\''+bu+'\\']= parseInt(this.value)">%</div>';
+          }).join('')}
+        </div>
+      </div>
+    </div>` : ''}
+    ${init.layer === 'Location Strategy' ? `
+    <div style="background:#FFF3E0;padding:12px;border-radius:8px;margin-top:8px;border-left:3px solid #D97706;">
+      <div style="font-size:11px;font-weight:700;color:#D97706;margin-bottom:8px;">📍 Location Strategy Configuration</div>
+      <div class="init-field-row3">
+        <div class="init-field">
+          <label>Migration Direction</label>
+          <select id="ie_locDirection" onchange="INITIATIVES[${idx}]._locDirection=this.value">
+            <option value="offshore" ${(init._locDirection||'offshore')=='offshore'?'selected':''}>Onshore → Offshore</option>
+            <option value="nearshore" ${(init._locDirection||'')=='nearshore'?'selected':''}>Onshore → Nearshore</option>
+            <option value="reshore" ${(init._locDirection||'')=='reshore'?'selected':''}>Offshore → Onshore</option>
+          </select>
+        </div>
+        <div class="init-field">
+          <label>Cost Arbitrage %</label>
+          <input type="number" id="ie_arbitrage" value="${((init._arbitrage||0.40)*100).toFixed(0)}" min="0" max="80" step="5" onchange="INITIATIVES[${idx}]._arbitrage=this.value/100">
+        </div>
+        <div class="init-field">
+          <label>Target Geography</label>
+          <select id="ie_geography" onchange="INITIATIVES[${idx}]._geography=this.value">
+            <option value="india" ${(init._geography||'india')=='india'?'selected':''}>India</option>
+            <option value="philippines" ${(init._geography||'')=='philippines'?'selected':''}>Philippines</option>
+            <option value="latam" ${(init._geography||'')=='latam'?'selected':''}>LATAM (Nearshore)</option>
+            <option value="eeurope" ${(init._geography||'')=='eeurope'?'selected':''}>Eastern Europe</option>
+            <option value="other" ${(init._geography||'')=='other'?'selected':''}>Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="init-field-row" style="margin-top:6px;">
+        <div class="init-field">
+          <label>Language Requirements</label>
+          <select id="ie_lang" onchange="INITIATIVES[${idx}]._langReq=this.value">
+            <option value="english" ${(init._langReq||'english')=='english'?'selected':''}>English only</option>
+            <option value="bilingual" ${(init._langReq||'')=='bilingual'?'selected':''}>Bilingual</option>
+            <option value="multi" ${(init._langReq||'')=='multi'?'selected':''}>Multilingual (3+)</option>
+          </select>
+        </div>
+        <div class="init-field">
+          <label>Transition Model</label>
+          <select id="ie_transition" onchange="INITIATIVES[${idx}]._transition=this.value">
+            <option value="lift" ${(init._transition||'lift')=='lift'?'selected':''}>Lift & shift</option>
+            <option value="phased" ${(init._transition||'')=='phased'?'selected':''}>Phased migration</option>
+            <option value="hybrid" ${(init._transition||'')=='hybrid'?'selected':''}>Hybrid (split)</option>
+          </select>
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--ey-text-light);margin-top:4px;">Cost arbitrage is applied to the affected roles' cost base. Geography affects quality risk and language availability.</div>
+    </div>` : ''}
 
     <div class="init-impact-preview" id="ie_preview">
       <div style="font-size:11px;font-weight:700;margin-bottom:8px;">🎯 Relevance Match (${init.relevanceScore || '—'}/100)</div>
@@ -5765,21 +6097,23 @@ function drawPriorityMatrix() {
    ═══════════════════════════════════════════════════════════════ */
 function renderPage10() {
   const el = document.getElementById('page-10');
+  const _fq10 = _filteredQueues(); // v12-#52: BU-filtered
 
   // v12-#25: Build intent-channel level decisions (not channel-level)
   const decisions = [];
-  const totalVolAll = DEMO.queues.reduce((s,q)=>s+q.volume,0) || 1;
+  const totalVolAll = _fq10.reduce((s,q)=>s+q.volume,0) || 1;
   DEMO.intents.forEach(intent => {
     const cmplx = DEMO.intentComplexity[intent];
     // Compute total intent volume across all channels (for INTRODUCE rows — #25 fix)
-    const intentTotalVol = DEMO.queues.filter(q=>q.intent===intent).reduce((s,q)=>s+q.volume,0);
+    const intentTotalVol = _fq10.filter(q=>q.intent===intent).reduce((s,q)=>s+q.volume,0);
     DEMO.channels.forEach(ch => {
-      const qs = DEMO.queues.filter(q => q.intent === intent && q.channel === ch);
+      const qs = _fq10.filter(q => q.intent === intent && q.channel === ch);
       if (qs.length === 0) {
         const cap = DEMO.channelCap[ch];
         if (cap >= 0.5 && cmplx < 0.5 && ['Chat','App/Self-Service','SMS/WhatsApp'].includes(ch)) {
-          decisions.push({ intent, channel: ch, action: 'INTRODUCE', rationale: 'High capability, low complexity — digital opportunity',
-            volume: intentTotalVol, health: 0, impact: '+', isNew: true });
+          const estDeflectable = Math.round(intentTotalVol * 0.20); // Estimate 20% addressable
+          decisions.push({ intent, channel: ch, action: 'INTRODUCE', rationale: 'High capability ('+cap.toFixed(1)+'), low complexity ('+cmplx.toFixed(1)+') — digital opportunity',
+            volume: intentTotalVol, estVolume: estDeflectable, health: 0, impact: '+', isNew: true, avgCPC: 0 });
         }
         return;
       }
@@ -5787,7 +6121,7 @@ function renderPage10() {
       const health = qs.reduce((s,q)=>s+getQueueHealth(q)*q.volume,0) / tv;
       const avgFCR = qs.reduce((s,q)=>s+(q.fcr||0)*q.volume,0) / tv;
       const avgCPC = qs.reduce((s,q)=>s+q.cpc*q.volume,0) / tv;
-      const p25Vol = DEMO.queues.map(q=>q.volume).sort((a,b)=>a-b)[Math.floor(DEMO.queues.length*0.25)];
+      const p25Vol = _fq10.map(q=>q.volume).sort((a,b)=>a-b)[Math.floor(_fq10.length*0.25)];
 
       let action, rationale;
       if (tv < p25Vol && health < 0.40) { action = 'RETIRE'; rationale = 'Low volume + poor health — not viable'; }
@@ -5825,7 +6159,7 @@ function renderPage10() {
   // v12-#27: Build migration risk warnings from actual data
   const migrationRisks = [];
   migrationFlows.forEach(mf => {
-    const srcQs = DEMO.queues.filter(q => q.intent === mf.intent && q.channel === mf.from);
+    const srcQs = _fq10.filter(q => q.intent === mf.intent && q.channel === mf.from);
     const avgFCR = srcQs.length > 0 ? srcQs.reduce((s,q)=>s+(q.fcr||0)*q.volume,0)/srcQs.reduce((s,q)=>s+q.volume,0) : 0;
     const avgCSAT = srcQs.length > 0 ? srcQs.reduce((s,q)=>s+(q.csat||0)*q.volume,0)/srcQs.reduce((s,q)=>s+q.volume,0) : 0;
     if (avgFCR < 0.70) migrationRisks.push({ intent: mf.intent, from: mf.from, to: mf.to, risk: 'high', reason: 'Source FCR is ' + (avgFCR*100).toFixed(0) + '% — migrating unresolved contacts risks repeat calls on target channel' });
@@ -5835,7 +6169,7 @@ function renderPage10() {
   // v12-#27: CX Safeguard gates with trigger thresholds
   const cxGates = [];
   DEMO.channels.forEach(ch => {
-    const qs = DEMO.queues.filter(q => q.channel === ch);
+    const qs = _fq10.filter(q => q.channel === ch);
     if (!qs.length) return;
     const vol = qs.reduce((s,q)=>s+q.volume,0);
     const avgCSAT = qs.reduce((s,q)=>s+(q.csat||0)*q.volume,0)/vol;
@@ -5847,10 +6181,10 @@ function renderPage10() {
   // v12-#27: Dynamic migration savings from enabled initiatives
   const deflectionInits = enabledInits.filter(i => i.name.toLowerCase().includes('deflect') || i.name.toLowerCase().includes('self-service') || i.name.toLowerCase().includes('chatbot') || i.name.toLowerCase().includes('ivr'));
   const totalMigVol = migrationFlows.reduce((s,m)=>s+m.volume,0);
-  const avgCPCvoice = DEMO.queues.filter(q=>q.channel==='Voice').reduce((s,q)=>s+q.cpc*q.volume,0) / Math.max(DEMO.queues.filter(q=>q.channel==='Voice').reduce((s,q)=>s+q.volume,0),1);
-  const avgCPCdigital = DEMO.queues.filter(q=>['Chat','App/Self-Service','SMS/WhatsApp'].includes(q.channel)).reduce((s,q)=>s+q.cpc*q.volume,0) / Math.max(DEMO.queues.filter(q=>['Chat','App/Self-Service','SMS/WhatsApp'].includes(q.channel)).reduce((s,q)=>s+q.volume,0),1) || 2.5;
+  const avgCPCvoice = _fq10.filter(q=>q.channel==='Voice').reduce((s,q)=>s+q.cpc*q.volume,0) / Math.max(_fq10.filter(q=>q.channel==='Voice').reduce((s,q)=>s+q.volume,0),1);
+  const avgCPCdigital = _fq10.filter(q=>['Chat','App/Self-Service','SMS/WhatsApp'].includes(q.channel)).reduce((s,q)=>s+q.cpc*q.volume,0) / Math.max(_fq10.filter(q=>['Chat','App/Self-Service','SMS/WhatsApp'].includes(q.channel)).reduce((s,q)=>s+q.volume,0),1) || 2.5;
   const annualMigSaving = totalMigVol * (avgCPCvoice - avgCPCdigital) * 12;
-  const digitalPctNow = DEMO.queues.filter(q=>['Chat','App/Self-Service','SMS/WhatsApp','Email'].includes(q.channel)).reduce((s,q)=>s+q.volume,0)/totalVolAll*100;
+  const digitalPctNow = _fq10.filter(q=>['Chat','App/Self-Service','SMS/WhatsApp','Email'].includes(q.channel)).reduce((s,q)=>s+q.volume,0)/totalVolAll*100;
   const digitalPctTarget = digitalPctNow + (totalMigVol/totalVolAll*100);
 
   el.innerHTML = `
@@ -5888,8 +6222,8 @@ function renderPage10() {
           }).map(d =>
             '<tr><td>'+d.intent+'</td><td>'+d.channel+'</td>' +
             '<td><span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:'+actionColors[d.action]+'20;color:'+actionColors[d.action]+';">'+d.action+'</span></td>' +
-            '<td style="text-align:right;">'+(d.volume > 0 ? fmt(d.volume,'int') : '—')+(d.isNew ? ' <span style="font-size:9px;color:var(--ey-text-light);">(intent vol)</span>' : '')+'</td>' +
-            '<td>'+(d.health > 0 ? '<strong style="color:'+ ragBg(ragColor(d.health)) +';">'+(d.health*100).toFixed(0)+'</strong>' : (d.isNew ? '<span style="color:var(--ey-text-light);">new</span>' : '—'))+'</td>' +
+            '<td style="text-align:right;">'+(d.volume > 0 ? fmt(d.volume,'int') : '—')+(d.isNew ? ' <span style="font-size:9px;color:var(--ey-blue);">→ est. '+fmt(d.estVolume||0,'int')+'</span>' : '')+'</td>' +
+            '<td>'+(d.health > 0 ? '<strong style="color:'+ ragBg(ragColor(d.health)) +';">'+(d.health*100).toFixed(0)+'</strong>' : (d.isNew ? '<span style="padding:1px 6px;border-radius:3px;font-size:9px;background:#E3F2FD;color:#1A73E8;font-weight:600;">New Opportunity</span>' : '—'))+'</td>' +
             '<td>'+(d.avgCPC ? fmt(d.avgCPC,'$') : '—')+'</td>' +
             '<td style="font-size:10px;">'+d.rationale+'</td></tr>'
           ).join('')}
@@ -6074,8 +6408,9 @@ function drawChannelSankey() {
 function renderPage11() {
   const el = document.getElementById('page-11');
   const inits = INITIATIVES.filter(i => i.enabled).sort((a,b) => a.startMonth - b.startMonth);
-  const maxMonth = Math.max(...inits.map(i => i.endMonth), 24);
-  const months = Array.from({length: maxMonth}, (_,i) => i+1);
+  const minMonth = Math.max(1, Math.min(...inits.map(i => i.startMonth), 1));
+  const maxMonth = Math.max(...inits.map(i => i.endMonth), minMonth + 12);
+  const months = Array.from({length: maxMonth - minMonth + 1}, (_,i) => i + minMonth);
   const layerColors = { 'AI & Automation': '#1A73E8', 'Operating Model': '#168736', 'Location Strategy': '#D97706' };
 
   const groups = [
@@ -6084,15 +6419,30 @@ function renderPage11() {
     { label: 'Strategic (12-24m)', inits: inits.filter(i => i.endMonth > 18) },
   ];
 
-  // v12-#28: Inline edit handler
+  // v12-#28/#50: Inline edit handler — now triggers waterfall recalculation
   window._ganttEdit = function(initId, field, val) {
     const init = INITIATIVES.find(i => i.id === initId);
     if (!init) return;
     val = parseInt(val);
     if (isNaN(val) || val < 1) return;
+    const oldStart = init.startMonth, oldRamp = init.ramp;
     if (field === 'start') { init.startMonth = val; init.endMonth = val + init.ramp; }
     else if (field === 'dur') { init.ramp = val; init.endMonth = init.startMonth + val; }
+    // v12-#50: Re-run waterfall engine so business case numbers update
+    const oldNPV = WATERFALL.totalNPV || 0;
+    const oldReduction = WATERFALL.totalReduction || 0;
+    WATERFALL = Object.assign(WATERFALL, runWaterfall());
+    const deltaNPV = (WATERFALL.totalNPV || 0) - oldNPV;
+    const deltaFTE = (WATERFALL.totalReduction || 0) - oldReduction;
     renderPage11();
+    // Show recalculation toast
+    const toast = document.createElement('div');
+    toast.style.cssText = 'position:fixed;bottom:24px;right:24px;padding:12px 20px;background:#2E2E38;color:#FFE600;border-radius:8px;font-size:12px;font-weight:600;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.3);transition:opacity 0.5s;';
+    const arrow = deltaNPV >= 0 ? '▲' : '▼';
+    const fteArrow = deltaFTE >= 0 ? '▲' : '▼';
+    toast.innerHTML = '⚡ Waterfall recalculated — NPV ' + arrow + ' $' + Math.abs(deltaNPV/1000).toFixed(0) + 'K | FTE ' + fteArrow + ' ' + Math.abs(deltaFTE).toFixed(0);
+    document.body.appendChild(toast);
+    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 600); }, 3000);
   };
 
   el.innerHTML = `
@@ -6139,7 +6489,7 @@ function renderPage11() {
     <div style="display:flex; gap:16px; margin-top:8px; font-size:11px;">
       <span>🔵 AI & Automation</span> <span>🟢 Operating Model</span> <span>🟡 Location Strategy</span>
       <span>⚪ Milestone (50% / full adoption)</span>
-      <span style="margin-left:auto; color:var(--ey-text-light);">Edit Start & Duration inline — Gantt re-renders automatically</span>
+      <span style="margin-left:auto; color:var(--ey-text-light);">Edit Start & Duration inline — waterfall recalculates automatically</span>
     </div>
   `;
 }
@@ -6579,6 +6929,11 @@ function renderPage14() {
   const horizon = DEMO.params.horizon;
   const sc = wf.scenarios;
 
+  // v12-#52: BU filter scope warning — waterfall is computed portfolio-wide
+  const _buNotice = _currentBUFilter !== 'all'
+    ? '<div style="background:#FFF3E0;border:1px solid #FF9800;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:11px;display:flex;align-items:center;gap:6px;"><span style="font-size:14px;">⚠️</span> Financial projections shown are <strong>portfolio-wide</strong> (all BUs). BU filter applies to diagnostic pages only. Use <strong>BU Impact (Page 17)</strong> for BU-level financial views.</div>'
+    : '';
+
   // NaN-safe helpers
   const safeNum = (v, fallback=0) => (isNaN(v) || v == null) ? fallback : v;
   const safeFmt = (v, type) => fmt(safeNum(v), type);
@@ -6635,6 +6990,7 @@ function renderPage14() {
 
   // ═══ SCR NARRATIVE STRUCTURE (CR-029) ═══
   el.innerHTML = `
+    ${_buNotice}
     <!-- ─── HEADLINE ANSWER ─── -->
     <div class="card" style="background:linear-gradient(135deg,#1a1a2e,#2E2E38);color:white;margin-bottom:20px;border:2px solid var(--ey-yellow);padding:28px;">
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:2px;color:var(--ey-yellow);margin-bottom:8px;">Investment Recommendation</div>
@@ -7310,7 +7666,8 @@ function renderPage16() {
 
   // v12-#18: Populate sub-intent table from enriched data
   setTimeout(() => {
-    const siData = DEMO.subIntentEnriched || [];
+    // v12-#18/#45: Flatten nested sub-intent data for consumption
+    const siData = _getSubIntentsFlat(DEMO.subIntentEnriched);
     const body = document.getElementById('subintent-opp-body');
     if (!body) return;
     if (siData.length === 0) {
@@ -7448,15 +7805,59 @@ function applyAllOverrides() {
   });
 
   // Read benchmark overrides
+  const bmOverrides = {};
   document.querySelectorAll('[data-bm]').forEach(inp => {
     const metric = inp.dataset.bm;
     const val = parseFloat(inp.value);
-    if (!isNaN(val)) (DEMO.benchmarks[metric]||{}).global = val;
+    if (!isNaN(val)) {
+      (DEMO.benchmarks[metric]||{}).global = val;
+      bmOverrides[metric] = val;
+    }
   });
+
+  // v12-#53: Persist benchmark overrides to server
+  if (Object.keys(bmOverrides).length > 0) {
+    fetch('/api/benchmarks/override', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({benchmarks: bmOverrides})
+    }).catch(() => {}); // fire-and-forget
+  }
 
   // CRITICAL: Re-run waterfall engine with new params
   recalculateAll();
 }
+
+// v12-#53: Load saved benchmark overrides on page init
+function _loadBenchmarkOverrides() {
+  fetch('/api/benchmarks/overrides')
+    .then(r => r.json())
+    .then(data => {
+      if (!data.benchmarks || Object.keys(data.benchmarks).length === 0) return;
+      let applied = 0;
+      Object.entries(data.benchmarks).forEach(([metric, val]) => {
+        if (DEMO.benchmarks[metric] && typeof DEMO.benchmarks[metric] === 'object') {
+          DEMO.benchmarks[metric].global = val;
+          applied++;
+        }
+        // Update any visible benchmark inputs
+        const inp = document.querySelector('[data-bm="'+metric+'"]');
+        if (inp) inp.value = val;
+      });
+      // If benchmarks were applied, recalculate to update diagnostic/waterfall with new targets
+      if (applied > 0) {
+        Object.keys(rendered).forEach(k => rendered[k] = false);
+        // Re-fetch diagnostic with updated benchmarks
+        fetch('/api/data-management/recalculate', {method: 'POST'})
+          .then(r => r.json())
+          .then(rd => {
+            if (rd.waterfall) { WATERFALL = rd.waterfall; window.WATERFALL = rd.waterfall; }
+            if (rd.data) Object.assign(DEMO, rd.data);
+            if (currentPage) renderPage(currentPage);
+          }).catch(() => {});
+      }
+    }).catch(() => {});
+}
+setTimeout(_loadBenchmarkOverrides, 1000);
 
 function resetAllOverrides() {
   if (!confirm('Reset all parameters to defaults? This cannot be undone.')) return;
@@ -7472,13 +7873,27 @@ function resetAllOverrides() {
 // ── BU Filter State ──
 let _currentBUFilter = 'all';
 
+// v12-#52: BU-filtered queue getter — all diagnostic pages should use this
+function _filteredQueues() {
+  if (!DEMO || !DEMO.queues) return [];
+  if (_currentBUFilter === 'all') return DEMO.queues;
+  return DEMO.queues.filter(q => q.bu === _currentBUFilter);
+}
+function _filteredVolume() { return _filteredQueues().reduce((s,q) => s + q.volume, 0); }
+function _buLabel() { return _currentBUFilter === 'all' ? 'All BUs' : _currentBUFilter; }
+
 function handleBUFilterChange(val) {
   _currentBUFilter = val;
-  // Re-render BU page if currently viewing it
-  if (currentPage === 17) {
-    rendered[17] = false;
-    renderPage(17);
+  // Visual feedback — highlight when filtering
+  const sel = document.getElementById('buFilter');
+  if (sel) {
+    sel.style.border = val === 'all' ? '1.5px solid var(--ey-mid-gray)' : '2px solid var(--ey-blue)';
+    sel.style.background = val === 'all' ? 'white' : '#E3F2FD';
   }
+  // Invalidate all pages that depend on BU filter
+  [1, 2, 4, 5, 6, 7, 8, 10, 12, 14, 17, 18, 19].forEach(p => { rendered[p] = false; });
+  // Re-render current page
+  renderPage(currentPage);
 }
 
 // ── Populate BU filter dropdown on data load ──
@@ -7530,7 +7945,7 @@ function renderPage17() {
   const locVolumes = {};
   const locFTE = {};
   (DEMO.queues || []).forEach(q => {
-    const loc = q.location || 'Onshore';
+    const loc = q.location || 'Unspecified';
     locVolumes[loc] = (locVolumes[loc] || 0) + q.volume;
   });
   const totalVol = Object.values(locVolumes).reduce((s,v) => s+v, 0) || 1;
@@ -7593,7 +8008,16 @@ function renderPage17() {
         html += '<span style="font-weight:700;color:var(--ey-green);white-space:nowrap;">-'+a.fte+' FTE</span></div>';
       });
       if (attribs.length > 5) {
-        html += '<div style="font-size:10px;color:var(--ey-text-light);margin-top:4px;">+'+(attribs.length-5)+' more initiatives</div>';
+        const extraId = 'bu-extra-' + bu.replace(/[^a-zA-Z0-9]/g,'');
+        html += '<div id="'+extraId+'" style="display:none;">';
+        attribs.slice(5).forEach(a => {
+          const layerColor = a.layer === 'AI & Automation' ? '#1A73E8' : a.layer === 'Operating Model' ? '#168736' : '#D97706';
+          html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:11px;">';
+          html += '<span><span style="background:'+layerColor+'22;color:'+layerColor+';padding:1px 5px;border-radius:3px;font-size:9px;margin-right:4px;">'+a.id+'</span>'+a.name.substring(0,28)+(a.name.length>28?'...':'')+'</span>';
+          html += '<span style="font-weight:700;color:var(--ey-green);white-space:nowrap;">-'+a.fte+' FTE</span></div>';
+        });
+        html += '</div>';
+        html += '<div style="font-size:10px;color:var(--ey-blue);margin-top:4px;cursor:pointer;font-weight:600;" onclick="var el=document.getElementById(\''+extraId+'\');if(el.style.display===\'none\'){el.style.display=\'block\';this.textContent=\'▾ Collapse\';}else{el.style.display=\'none\';this.textContent=\'▸ +'+(attribs.length-5)+' more initiatives\';}">▸ +'+(attribs.length-5)+' more initiatives</div>';
       }
       html += '</div>';
     }
@@ -7717,27 +8141,120 @@ function renderPage17() {
     });
     html += '</div>';
     
-    // Per-BU location split
+    // CR-033 v14: Per-BU location sliders (Consumer / Enterprise separate controls)
     if (bus.length > 1) {
-      html += '<div style="font-size:12px;font-weight:600;color:var(--ey-dark);margin-bottom:8px;">Per-BU Location Distribution</div>';
-      html += '<table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr style="background:var(--ey-light-gray);"><th style="padding:8px;text-align:left;">BU</th>';
-      locations.forEach(l => { html += '<th style="padding:8px;text-align:right;">'+l+'</th>'; });
-      html += '</tr></thead><tbody>';
+      // Initialise per-BU target state from queue data
+      if (!window._buLocMixState) {
+        window._buLocMixState = {};
+        bus.forEach(bu => {
+          window._buLocMixState[bu] = {};
+          let buTotal = 0;
+          locations.forEach(loc => {
+            const v = (DEMO.queues || []).filter(q => q.bu === bu && (q.location || 'Unspecified') === loc).reduce((s,q) => s + q.volume, 0);
+            window._buLocMixState[bu][loc] = v;
+            buTotal += v;
+          });
+          if (buTotal > 0) {
+            locations.forEach(loc => { window._buLocMixState[bu][loc] = Math.round(window._buLocMixState[bu][loc] / buTotal * 100); });
+          } else {
+            locations.forEach(loc => { window._buLocMixState[bu][loc] = Math.round(100 / locations.length); });
+          }
+        });
+      }
+      window._buLocMixUpdate = function(bu, loc, val) {
+        window._buLocMixState[bu][loc] = parseInt(val);
+        // Auto-normalise remaining locs proportionally
+        const others = locations.filter(l => l !== loc);
+        const remaining = 100 - parseInt(val);
+        const otherSum = others.reduce((s,l) => s + window._buLocMixState[bu][l], 0) || 1;
+        others.forEach(l => { window._buLocMixState[bu][l] = Math.round(window._buLocMixState[bu][l] / otherSum * remaining); });
+        renderPage17();
+      };
+
+      const buColors = { Consumer: 'var(--ey-blue)', Business: 'var(--ey-teal)', Enterprise: 'var(--ey-purple)' };
+      const locColors2 = { Onshore: '#1A73E8', Nearshore: '#D97706', Offshore: '#168736' };
+
+      html += '<div style="margin-top:20px;border-top:1px solid var(--ey-border);padding-top:16px;">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
+      html += '<div style="font-size:13px;font-weight:700;color:var(--ey-dark);">Per-BU Target Location Mix</div>';
+      html += '<span style="font-size:10px;padding:2px 8px;border-radius:4px;background:#EDE7F6;color:#512DA8;font-weight:600;">CR-033 — Editable per BU</span></div>';
+      html += '<div style="font-size:11px;color:var(--ey-text-light);margin-bottom:14px;">Set separate onshore / nearshore / offshore targets for each Business Unit. Sliders auto-normalise to 100%.</div>';
+
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;">';
       bus.forEach(bu => {
-        html += '<tr style="border-bottom:1px solid #eee;"><td style="padding:8px;font-weight:600;">'+bu+'</td>';
-        let buTotal = 0;
+        const buState = window._buLocMixState[bu] || {};
+        const buColor = buColors[bu] || 'var(--ey-dark)';
+        const buFTE = Math.round(totalFTE * (DEMO.queues || []).filter(q => q.bu === bu).reduce((s,q) => s + q.volume, 0) / Math.max(totalVol, 1));
+        const buMix = locations.map(loc => ({ loc, pct: buState[loc] || 0 }));
+        // Current mix from data
+        let buRawTotal = 0;
+        const buCurrentMix = {};
         locations.forEach(loc => {
-          const buLocVol = (DEMO.queues || []).filter(q => q.bu === bu && (q.location || 'Onshore') === loc).reduce((s,q) => s + q.volume, 0);
-          buTotal += buLocVol;
+          const v = (DEMO.queues || []).filter(q => q.bu === bu && (q.location || 'Unspecified') === loc).reduce((s,q) => s + q.volume, 0);
+          buCurrentMix[loc] = v; buRawTotal += v;
         });
+        locations.forEach(loc => { buCurrentMix[loc] = buRawTotal > 0 ? Math.round(buCurrentMix[loc] / buRawTotal * 100) : 0; });
+
+        html += '<div style="border:1px solid var(--ey-mid-gray);border-left:4px solid '+buColor+';border-radius:8px;padding:16px;">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">';
+        html += '<span style="font-size:14px;font-weight:700;color:var(--ey-dark);">'+bu+'</span>';
+        html += '<span style="font-size:10px;color:var(--ey-text-light);">~'+buFTE+' FTE</span></div>';
         locations.forEach(loc => {
-          const buLocVol = (DEMO.queues || []).filter(q => q.bu === bu && (q.location || 'Onshore') === loc).reduce((s,q) => s + q.volume, 0);
-          const pct = buTotal > 0 ? (buLocVol / buTotal * 100).toFixed(0) : '0';
-          html += '<td style="padding:8px;text-align:right;">'+pct+'%</td>';
+          const tgtPct = buState[loc] || 0;
+          const curPct = buCurrentMix[loc] || 0;
+          const c = locColors2[loc] || '#555';
+          const delta = tgtPct - curPct;
+          const deltaLabel = delta === 0 ? '' : (delta > 0 ? ' <span style="color:var(--ey-green);font-size:9px;">▲+'+delta+'%</span>' : ' <span style="color:var(--ey-red);font-size:9px;">▼'+delta+'%</span>');
+          html += '<div style="margin-bottom:10px;">';
+          html += '<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">';
+          html += '<span style="font-weight:600;color:'+c+';">'+loc+'</span>';
+          html += '<span style="font-weight:700;">'+tgtPct+'%'+deltaLabel+' <span style="color:var(--ey-text-light);font-weight:400;">(was '+curPct+'%)</span></span></div>';
+          html += '<input type="range" min="0" max="100" step="5" value="'+tgtPct+'" style="width:100%;accent-color:'+c+';height:4px;" ';
+          html += 'oninput="_buLocMixUpdate(\\''+bu+'\\',\\''+loc+'\\',this.value)">';
+          html += '<div style="width:100%;height:6px;background:var(--ey-mid-gray);border-radius:3px;margin-top:3px;overflow:hidden;">';
+          html += '<div style="width:'+tgtPct+'%;height:100%;background:'+c+';border-radius:3px;"></div></div>';
+          html += '</div>';
         });
-        html += '</tr>';
+        // Mini donut-style summary bar
+        html += '<div style="margin-top:6px;display:flex;height:8px;border-radius:4px;overflow:hidden;">';
+        locations.forEach(loc => {
+          html += '<div style="width:'+buState[loc]+'%;background:'+(locColors2[loc]||'#ccc')+';"></div>';
+        });
+        html += '</div>';
+        html += '<div style="display:flex;gap:8px;margin-top:4px;">';
+        locations.forEach(loc => {
+          html += '<span style="font-size:9px;color:'+(locColors2[loc]||'#555')+';">■ '+loc+' '+buState[loc]+'%</span>';
+        });
+        html += '</div></div>';
       });
-      html += '</tbody></table>';
+      html += '</div>'; // grid
+
+      // BU vs Global comparison table
+      html += '<div style="margin-top:16px;background:var(--ey-light-gray);border-radius:6px;padding:12px;">';
+      html += '<div style="font-size:11px;font-weight:700;margin-bottom:8px;color:var(--ey-dark);">BU vs Global Target Comparison</div>';
+      html += '<table style="width:100%;border-collapse:collapse;font-size:10px;">';
+      html += '<thead><tr style="background:var(--ey-mid-gray);"><th style="padding:6px 8px;text-align:left;">Business Unit</th>';
+      locations.forEach(l => { html += '<th style="padding:6px 8px;text-align:center;">'+l+' Target</th>'; });
+      html += '<th style="padding:6px 8px;text-align:center;">vs Global</th></tr></thead><tbody>';
+      bus.forEach(bu => {
+        const buState = window._buLocMixState[bu] || {};
+        html += '<tr style="border-bottom:1px solid #eee;"><td style="padding:6px 8px;font-weight:600;">'+bu+'</td>';
+        locations.forEach(loc => {
+          const pct = buState[loc] || 0;
+          const globalPct = window._locMixState[loc] || 0;
+          const diff = pct - globalPct;
+          const bg = Math.abs(diff) > 10 ? (diff > 0 ? '#E8F5E9' : '#FFF3E0') : '';
+          html += '<td style="padding:6px 8px;text-align:center;background:'+bg+';font-weight:600;">'+pct+'%</td>';
+        });
+        // Overall offshore % for this BU vs global
+        const buOff = buState['Offshore'] || 0;
+        const gOff = window._locMixState['Offshore'] || 0;
+        const offDiff = buOff - gOff;
+        html += '<td style="padding:6px 8px;text-align:center;font-size:10px;color:'+(Math.abs(offDiff)>10?'var(--ey-amber)':'var(--ey-text-light)')+';">';
+        html += (offDiff >= 0 ? '↑ '+offDiff+'% more offshore' : '↓ '+Math.abs(offDiff)+'% less offshore')+'</td></tr>';
+      });
+      html += '</tbody></table></div>';
+      html += '</div>'; // per-BU section
     }
     
     // Linked location initiatives
@@ -7901,8 +8418,8 @@ function renderPage18() {
 function renderPage19() {
   const el = document.getElementById('page-19');
   if (!el) return;
-  const queues = DEMO.queues || [];
-  if (!queues.length) { el.innerHTML = '<div class="card"><p>No queue data available.</p></div>'; return; }
+  const queues = _filteredQueues();
+  if (!queues.length) { el.innerHTML = '<div class="card"><p>No queue data available'+ (_currentBUFilter !== 'all' ? ' for '+_currentBUFilter : '') +'.</p></div>'; return; }
 
   // Sort by volume desc
   const sorted = [...queues].sort((a,b) => (b.volume||0) - (a.volume||0));
@@ -7917,7 +8434,7 @@ function renderPage19() {
     <div class="kpi-card" style="border-left-color:var(--ey-green);"><div class="kpi-value">${fmt(totalVol,'k')}</div><div class="kpi-label">Monthly Volume</div></div>
     <div class="kpi-card" style="border-left-color:var(--ey-amber);"><div class="kpi-value">${avgAHT.toFixed(0)}s</div><div class="kpi-label">Wtd Avg AHT</div></div>
     <div class="kpi-card" style="border-left-color:var(--ey-purple);"><div class="kpi-value">${(avgFCR*100).toFixed(0)}%</div><div class="kpi-label">Wtd Avg FCR</div></div>
-    <div class="kpi-card" style="border-left-color:#D97706;"><div class="kpi-value">${[...new Set(sorted.map(q=>q.location||'Onshore'))].length}</div><div class="kpi-label">Locations</div></div>
+    <div class="kpi-card" style="border-left-color:#D97706;"><div class="kpi-value">${[...new Set(sorted.map(q=>q.location).filter(Boolean))].length || '—'}</div><div class="kpi-label">Locations</div></div>
   </div>`;
 
   // Queue detail table
@@ -7929,23 +8446,57 @@ function renderPage19() {
       <th>Volume</th><th>Share</th><th>AHT</th><th>FCR</th><th>CSAT</th><th>Complexity</th>
     </tr></thead><tbody>`;
 
-  sorted.forEach(q => {
+  // v12-#54: Pre-compute sub-intent data for expandable rows
+  const siFlat = _getSubIntentsFlat(DEMO.subIntentEnriched);
+  const hasSI = siFlat.length > 0;
+
+  sorted.forEach((q, qIdx) => {
     const share = totalVol > 0 ? ((q.volume||0)/totalVol*100).toFixed(1) : '0';
     const ahtColor = (q.aht||0) > 400 ? 'var(--ey-red)' : (q.aht||0) > 300 ? 'var(--ey-amber)' : 'var(--ey-green)';
     const fcrColor = (q.fcr||0) < 0.65 ? 'var(--ey-red)' : (q.fcr||0) < 0.75 ? 'var(--ey-amber)' : 'var(--ey-green)';
+    // v12-#55: Fix CSAT — display as /5 score, not percentage (was showing 357%)
+    const csatVal = q.csat || 0;
+    const csatDisplay = csatVal > 5 ? (csatVal/100).toFixed(1) : csatVal.toFixed(1);
+    const csatColor = csatVal < 3.0 ? 'var(--ey-red)' : csatVal < 3.8 ? 'var(--ey-amber)' : 'var(--ey-green)';
+    // v12-#55: Complexity — standardize to labels
+    const cplx = q.complexity || 0;
+    const cplxLabel = typeof cplx === 'string' ? cplx : cplx < 0.33 ? 'Simple' : cplx < 0.66 ? 'Moderate' : 'Complex';
+    const cplxColor = cplx >= 0.66 || cplx === 'complex' ? 'var(--ey-red)' : cplx >= 0.33 || cplx === 'moderate' ? 'var(--ey-amber)' : 'var(--ey-green)';
+    // v12-#54: Sub-intents for this queue's intent
+    const qSubs = hasSI ? siFlat.filter(si => si.parentIntent === q.intent) : [];
+    const expandBtn = qSubs.length > 0 ? '<span style="cursor:pointer;font-size:13px;" onclick="this.textContent=this.textContent===\\'▸\\'?\\'▾\\':\\'▸\\';document.querySelectorAll(\\'.si-row-'+qIdx+'\\').forEach(r=>r.style.display=r.style.display===\\'none\\'?\\'table-row\\':\\'none\\')">▸</span> ' : '';
     h += `<tr>
-      <td><strong>${q.bu||''}</strong></td>
+      <td><strong>${expandBtn}${q.bu||''}</strong></td>
       <td>${(q.intent||'').substring(0,25)}</td>
       <td>${q.channel||''}</td>
-      <td>${q.location||'Onshore'}</td>
-      <td>${q.sourcing||'In-house'}</td>
+      <td>${q.location || '<span style="color:var(--ey-text-light);">—</span>'}</td>
+      <td>${q.sourcing || '<span style="color:var(--ey-text-light);">—</span>'}</td>
       <td style="text-align:right;font-weight:600;">${fmt(q.volume||0,'k')}</td>
       <td style="text-align:center;">${share}%</td>
       <td style="text-align:center;color:${ahtColor};font-weight:600;">${q.aht||0}s</td>
       <td style="text-align:center;color:${fcrColor};font-weight:600;">${((q.fcr||0)*100).toFixed(0)}%</td>
-      <td style="text-align:center;">${((q.csat||0)*100).toFixed(0)}%</td>
-      <td style="text-align:center;">${((q.complexity||0)*100).toFixed(0)}%</td>
+      <td style="text-align:center;color:${csatColor};font-weight:600;">${csatDisplay}<span style="font-size:8px;color:var(--ey-text-light);">/5</span></td>
+      <td style="text-align:center;"><span style="color:${cplxColor};font-weight:600;">${cplxLabel}</span></td>
     </tr>`;
+    // v12-#54: Expandable sub-intent child rows (hidden by default)
+    qSubs.forEach(si => {
+      const siVol = (q.volume||0) * (si.volumeShare||0);
+      const siCplx = si.complexity || 0.5;
+      const siCplxLabel = typeof siCplx === 'string' ? siCplx : siCplx < 0.33 ? 'Simple' : siCplx < 0.66 ? 'Moderate' : 'Complex';
+      const siCplxColor = siCplx >= 0.66 ? 'var(--ey-red)' : siCplx >= 0.33 ? 'var(--ey-amber)' : 'var(--ey-green)';
+      const feas = si.feasibilityScore != null ? (si.feasibilityScore * 100).toFixed(0) + '%' : '—';
+      h += `<tr class="si-row-${qIdx}" style="display:none;background:#FAFBFC;font-size:10px;">
+        <td></td>
+        <td style="padding-left:24px;color:var(--ey-text-light);">└ ${si.subIntent || si.name}</td>
+        <td style="color:var(--ey-text-light);">${q.channel||''}</td>
+        <td colspan="2" style="color:var(--ey-text-light);font-size:9px;">Feasibility: ${feas}</td>
+        <td style="text-align:right;">${fmt(siVol,'k')}</td>
+        <td style="text-align:center;">${((si.volumeShare||0)*100).toFixed(0)}%</td>
+        <td colspan="2" style="text-align:center;color:var(--ey-text-light);">${(si.deflectableChannels||[]).join(', ') || '—'}</td>
+        <td></td>
+        <td style="text-align:center;"><span style="color:${siCplxColor};font-weight:600;">${siCplxLabel}</span></td>
+      </tr>`;
+    });
   });
   h += `</tbody></table></div></div>`;
 
@@ -7967,12 +8518,12 @@ function renderPage19() {
   h += `</tbody></table></div>`;
 
   // Location distribution
-  const locs = [...new Set(sorted.map(q => q.location||'Onshore'))];
+  const locs = [...new Set(sorted.map(q => q.location||'Unspecified'))];
   if (locs.length > 1) {
     h += `<div class="card" style="margin-top:16px;"><div class="card-title">🌍 Volume by Location</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">`;
     locs.forEach(loc => {
-      const locVol = sorted.filter(q => (q.location||'Onshore') === loc).reduce((s, q) => s + (q.volume||0), 0);
+      const locVol = sorted.filter(q => (q.location||'Unspecified') === loc).reduce((s, q) => s + (q.volume||0), 0);
       const pct = totalVol > 0 ? (locVol/totalVol*100).toFixed(1) : '0';
       h += `<div style="background:var(--ey-light-gray);border-radius:8px;padding:14px;">
         <div style="font-size:14px;font-weight:700;">${loc}</div>
@@ -7990,6 +8541,27 @@ function renderPage19() {
 /* ═══════════════════════════════════════════════════════════════
    P2-8: PAGE 20 — OPERATING MODEL RECOMMENDATIONS
    ═══════════════════════════════════════════════════════════════ */
+// v12-#37: OM slider downstream propagation — target mix state is shared across pages
+let _omSliderTimer = null;
+function _omSliderDebounce() {
+  clearTimeout(_omSliderTimer);
+  _omSliderTimer = setTimeout(() => {
+    // Invalidate pages that show location data so they pick up target OM state
+    [10, 12, 17].forEach(p => { rendered[p] = false; });
+    // Update BU Impact location section if user navigates there
+    const tgt = window._targetOpModel;
+    if (tgt && window._locMixState) {
+      // Sync location sliders on BU Impact page with OM target
+      window._locMixState['Onshore'] = tgt.onshore;
+      window._locMixState['Nearshore'] = tgt.nearshore;
+      window._locMixState['Offshore'] = tgt.offshore;
+    }
+    // Toast
+    const toast = document.getElementById('dmToast');
+    if (toast) { toast.textContent = '✓ Location target updated — BU Impact synced'; toast.style.display = 'block'; toast.style.background = '#168736'; setTimeout(() => toast.style.display = 'none', 2000); }
+  }, 500);
+}
+
 function renderPage20() {
   const el = document.getElementById('page-20');
   if (!el) return;
@@ -8005,7 +8577,7 @@ function renderPage20() {
 
   // Current state from data
   const locDist = {};
-  queues.forEach(q => { const loc = q.location || 'Onshore'; locDist[loc] = (locDist[loc]||0) + (q.volume||0); });
+  queues.forEach(q => { const loc = q.location || 'Unspecified'; locDist[loc] = (locDist[loc]||0) + (q.volume||0); });
   const totalVol = Object.values(locDist).reduce((s,v)=>s+v,0) || 1;
   const currOnsh = ((locDist['Onshore']||0)/totalVol*100);
   const currNear = ((locDist['Nearshore']||0)/totalVol*100);
@@ -8080,12 +8652,12 @@ function renderPage20() {
           <div style="margin-bottom:8px;">
             <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;"><span>Onshore</span><span id="om-onsh-val" style="font-weight:700;">${tgt.onshore}%</span></div>
             <input type="range" id="om-onsh-slider" min="20" max="80" step="5" value="${tgt.onshore}" style="width:100%;accent-color:var(--ey-blue);"
-              oninput="window._targetOpModel.onshore=+this.value; window._targetOpModel.offshore=Math.max(0,100-window._targetOpModel.onshore-window._targetOpModel.nearshore); renderPage20();">
+              oninput="window._targetOpModel.onshore=+this.value; window._targetOpModel.offshore=Math.max(0,100-window._targetOpModel.onshore-window._targetOpModel.nearshore); _omSliderDebounce(); renderPage20();">
           </div>
           <div style="margin-bottom:8px;">
             <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;"><span>Nearshore</span><span id="om-near-val" style="font-weight:700;">${tgt.nearshore}%</span></div>
             <input type="range" id="om-near-slider" min="0" max="50" step="5" value="${tgt.nearshore}" style="width:100%;accent-color:var(--ey-amber);"
-              oninput="window._targetOpModel.nearshore=+this.value; window._targetOpModel.offshore=Math.max(0,100-window._targetOpModel.onshore-window._targetOpModel.nearshore); renderPage20();">
+              oninput="window._targetOpModel.nearshore=+this.value; window._targetOpModel.offshore=Math.max(0,100-window._targetOpModel.onshore-window._targetOpModel.nearshore); _omSliderDebounce(); renderPage20();">
           </div>
           <div style="margin-bottom:8px;">
             <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;"><span>Offshore (auto)</span><span style="font-weight:700;color:var(--ey-green);">${tgt.offshore}%</span></div>
@@ -8097,31 +8669,61 @@ function renderPage20() {
       </div>
     </div>
 
-    <!-- Cost Bridge: Current → Target -->
+    <!-- Cost/Effort Bridge Waterfall: Current to Target (CR-037 v14) -->
     <div class="card" style="margin-bottom:16px;">
-      <div class="card-title">Cost-Effort Bridge — Current to Target</div>
-      <div style="display:grid;grid-template-columns:1fr 2fr 1fr;gap:16px;align-items:center;">
-        <div style="text-align:center;padding:16px;background:var(--ey-light-gray);border-radius:8px;">
-          <div style="font-size:10px;color:var(--ey-text-light);">Current Cost</div>
-          <div style="font-size:24px;font-weight:800;color:var(--ey-blue);">${fmt(currentBlended * totalFTE,'$m')}</div>
-          <div style="font-size:10px;">${totalFTE} FTE × ${fmt(currentBlended,'$k')}</div>
+      <div class="card-title">Cost-Effort Bridge — Current to Target State
+        <span style="font-size:11px;font-weight:400;color:var(--ey-text-light);margin-left:8px;">Waterfall decomposition of total cost reduction</span>
+      </div>
+      <div style="font-size:11px;color:var(--ey-text-light);margin-bottom:14px;">Step-by-step cost reduction: headcount rationalisation plus location mix arbitrage savings.</div>
+      ${(function(){
+        const currentTotal = currentBlended * totalFTE;
+        const fteSaving = reduction * currentBlended;
+        const locArb = Math.max(0, locationSaving);
+        const targetTotal = tgtBlended * futureFTE;
+        const maxVal = Math.max(currentTotal, 1);
+        const BAR_H = 160;
+        const fmtV = v => v >= 1e6 ? '$'+(v/1e6).toFixed(1)+'M' : '$'+(v/1e3).toFixed(0)+'K';
+        function barH(v){ return Math.max(6, Math.round(Math.abs(v)/maxVal*BAR_H)); }
+        const items = [
+          {label:'Current\nCost Base', value:currentTotal, type:'base', color:'#1A73E8'},
+          {label:'FTE\nReduction\n−'+reduction.toFixed(0)+' FTE', value:-fteSaving, type:'neg', color:'#C5003E'},
+          {label:'Location\nArbitrage', value:-locArb, type:'neg', color:'#D97706'},
+          {label:'Target\nCost Base', value:targetTotal, type:'result', color:'#168736'},
+        ];
+        const wfHtml = items.map((b,i)=>{
+          const h = barH(b.value);
+          const gap = BAR_H - h;
+          const isNeg = b.type==='neg';
+          const isBase = b.type==='base';
+          const borderR = isNeg ? '0 0 5px 5px' : '5px 5px 0 0';
+          const marginTop = isNeg ? gap+'px' : '0';
+          const linesLabel = b.label.split('\n').join('<br>');
+          const connector = i < items.length-1 ? '<div style="flex:0 0 20px;display:flex;align-items:center;padding-bottom:28px;font-size:16px;color:#bbb;">→</div>' : '';
+          return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;">'+
+            '<div style="font-size:10px;font-weight:800;color:'+b.color+';margin-bottom:4px;text-align:center;">'+fmtV(Math.abs(b.value))+'</div>'+
+            '<div style="height:'+BAR_H+'px;display:flex;flex-direction:column;justify-content:'+(isBase||b.type==='result'?'flex-end':'flex-start')+';width:72px;">'+
+              '<div style="height:'+h+'px;background:'+b.color+';border-radius:'+borderR+';opacity:'+(b.type==='result'?1:0.82)+';'+(isNeg?'margin-top:'+gap+'px;':'')+'">'+'</div>'+
+            '</div>'+
+            '<div style="font-size:9px;color:var(--ey-text-light);text-align:center;margin-top:6px;line-height:1.4;">'+linesLabel+'</div>'+
+          '</div>'+connector;
+        }).join('');
+        return '<div style="display:flex;align-items:flex-end;gap:0;padding:4px 8px 0;">'+wfHtml+'</div>';
+      })()}
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px;">
+        <div style="background:#EEF4FF;border-radius:6px;padding:10px;text-align:center;">
+          <div style="font-size:10px;color:var(--ey-text-light);">FTE Headcount Savings</div>
+          <div style="font-size:18px;font-weight:800;color:var(--ey-blue);">${fmt(reduction * currentBlended,'$m')}</div>
+          <div style="font-size:9px;color:var(--ey-text-light);">${reduction.toFixed(0)} FTE × ${fmt(currentBlended,'$k')}/FTE</div>
         </div>
-        <div style="text-align:center;">
-          <div style="display:flex;align-items:center;gap:4px;justify-content:center;">
-            <div style="flex:1;height:2px;background:var(--ey-mid-gray);"></div>
-            <div style="padding:6px 16px;background:var(--ey-yellow-bg);border:1px solid var(--ey-yellow);border-radius:20px;font-size:11px;font-weight:700;">
-              −${reduction.toFixed(0)} FTE reduction + location mix shift
-            </div>
-            <div style="flex:1;height:2px;background:var(--ey-mid-gray);"></div>
-          </div>
-          <div style="font-size:10px;color:var(--ey-text-light);margin-top:4px;">
-            FTE savings: ${fmt(reduction * currentBlended,'$m')} | Location arbitrage: ${fmt(locationSaving,'$m')} | Total: ${fmt(reduction * currentBlended + locationSaving,'$m')}
-          </div>
+        <div style="background:#FFF8E1;border-radius:6px;padding:10px;text-align:center;">
+          <div style="font-size:10px;color:var(--ey-text-light);">Location Arbitrage Saving</div>
+          <div style="font-size:18px;font-weight:800;color:var(--ey-amber);">${locationSaving > 0 ? fmt(locationSaving,'$m') : '—'}</div>
+          <div style="font-size:9px;color:var(--ey-text-light);">${tgt.onshore}/${tgt.nearshore}/${tgt.offshore} On/Near/Off</div>
         </div>
-        <div style="text-align:center;padding:16px;background:var(--ey-green-bg);border:2px solid var(--ey-green);border-radius:8px;">
-          <div style="font-size:10px;color:var(--ey-text-light);">Target Cost</div>
-          <div style="font-size:24px;font-weight:800;color:var(--ey-green);">${fmt(tgtBlended * futureFTE,'$m')}</div>
-          <div style="font-size:10px;">${futureFTE.toFixed(0)} FTE × ${fmt(tgtBlended,'$k')}</div>
+        <div style="background:var(--ey-green-bg);border:2px solid var(--ey-green);border-radius:6px;padding:10px;text-align:center;">
+          <div style="font-size:10px;color:var(--ey-text-light);">Total Annual Saving</div>
+          <div style="font-size:18px;font-weight:800;color:var(--ey-green);">${fmt(reduction * currentBlended + Math.max(0,locationSaving),'$m')}</div>
+          <div style="font-size:9px;color:var(--ey-text-light);">${futureFTE.toFixed(0)} FTE × ${fmt(tgtBlended,'$k')}/FTE target</div>
         </div>
       </div>
     </div>
@@ -8149,20 +8751,25 @@ function renderPage20() {
       ${tgt.tiers.reduce((s,t)=>s+t.pct,0) !== 100 ? '<div style="margin-top:8px;padding:8px;background:#FFF3E0;border:1px solid #FF9800;border-radius:6px;font-size:11px;color:#E65100;font-weight:600;">Tier shares sum to '+tgt.tiers.reduce((s,t)=>s+t.pct,0)+'% — must equal 100%</div>' : ''}
     </div>
 
-    <!-- Required Initiatives -->
+    <!-- Required Initiatives — with auto-enable CTA (CR-037 v14) -->
     <div class="card" style="margin-bottom:16px;">
-      <div class="card-title">Initiatives Required for Target Model</div>
-      <div style="font-size:11px;color:var(--ey-text-light);margin-bottom:8px;">Location Strategy initiatives needed to achieve your target operating model.</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div class="card-title" style="margin-bottom:0;">Initiatives Required for Target Model</div>
+        ${neededInits.length > 0 ? '<button style="padding:6px 14px;background:var(--ey-yellow);color:var(--ey-dark);border:none;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;" onclick="'+
+          neededInits.map((i,idx)=>'INITIATIVES['+INITIATIVES.indexOf(i)+'].enabled=true;').join('')+
+          'recalculateAll();">⚡ Auto-Enable '+neededInits.length+' Needed Initiative'+(neededInits.length>1?'s':'')+' + Recalculate</button>' : ''}
+      </div>
+      <div style="font-size:11px;color:var(--ey-text-light);margin-bottom:8px;">Location Strategy initiatives linked to your target model. Use Auto-Enable to activate initiatives flagged as needed and trigger a full recalculation.</div>
       <table class="data-table" style="font-size:11px;">
         <thead><tr><th>Initiative</th><th>Layer</th><th>Status</th><th>Start</th><th>Ramp</th><th>FTE Impact</th><th>Rationale</th></tr></thead>
         <tbody>
-          ${locInits.map(i => '<tr>' +
+          ${locInits.map(i => '<tr style="background:'+(neededInits.includes(i)?'#FFF8E1':'')+';">' +
             '<td><strong>' + i.id + '</strong> ' + i.name + '</td>' +
             '<td><span class="badge badge-low">' + i.layer + '</span></td>' +
-            '<td>' + (i.enabled ? '<span style="color:var(--ey-green);font-weight:700;">Enabled</span>' : '<span style="color:#E65100;font-weight:700;cursor:pointer;" title="Enable on Roadmap">Not enabled</span>') + '</td>' +
+            '<td>' + (i.enabled ? '<span style="color:var(--ey-green);font-weight:700;">✅ Enabled</span>' : '<span style="color:#E65100;font-weight:700;">Not enabled</span>') + '</td>' +
             '<td>M' + i.startMonth + '</td><td>' + i.ramp + 'mo</td>' +
             '<td style="font-weight:600;color:var(--ey-green);">' + ((i._fteImpact||0) > 0 ? '-' + (i._fteImpact||0).toFixed(1) : '—') + '</td>' +
-            '<td style="font-size:10px;">' + (neededInits.includes(i) ? '<span style="color:var(--ey-amber);font-weight:600;">Needed for target mix</span>' : 'Available') + '</td></tr>'
+            '<td style="font-size:10px;">' + (neededInits.includes(i) ? '<span style="background:#FFF3CD;color:#B45309;padding:1px 6px;border-radius:4px;font-weight:700;">⚠ Needed for target mix</span>' : '<span style="color:var(--ey-text-light);">Available</span>') + '</td></tr>'
           ).join('') || '<tr><td colspan="7" style="color:var(--ey-text-light);">No Location Strategy initiatives in roadmap</td></tr>'}
         </tbody>
       </table>
